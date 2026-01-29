@@ -18,6 +18,7 @@ class ArxivPaperData:
     year: int
     arxiv_url: str
     published_at: str  # ISO date string (e.g., "2025-06-12")
+    conference: Optional[str] = None  # Conference/venue name from Semantic Scholar
 
 
 class ArxivServiceError(Exception):
@@ -44,6 +45,7 @@ class ArxivService:
     """Service for fetching paper metadata from arXiv API"""
 
     ARXIV_API_URL = "https://export.arxiv.org/api/query"
+    SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper/arXiv:"
     ARXIV_URL_PATTERNS = [
         r"arxiv\.org/abs/(\d{4}\.\d{4,5})(v\d+)?",  # https://arxiv.org/abs/2402.17152
         r"arxiv\.org/pdf/(\d{4}\.\d{4,5})(v\d+)?",  # https://arxiv.org/pdf/2402.17152
@@ -86,7 +88,51 @@ class ArxivService:
         except httpx.HTTPError as e:
             raise ArxivFetchError(f"Failed to fetch from arXiv API: {e}")
 
-        return self._parse_response(response.text, arxiv_id)
+        paper_data = self._parse_response(response.text, arxiv_id)
+
+        # Try to get conference info from Semantic Scholar
+        conference = await self._fetch_conference(arxiv_id)
+        paper_data.conference = conference
+
+        return paper_data
+
+    async def _fetch_conference(self, arxiv_id: str) -> Optional[str]:
+        """Fetch conference/venue info from Semantic Scholar API"""
+        try:
+            response = await self.client.get(
+                f"{self.SEMANTIC_SCHOLAR_API}{arxiv_id}",
+                params={"fields": "venue,publicationVenue,year"},
+            )
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+            year = data.get("year")
+            year_suffix = f"'{str(year)[-2:]}" if year else ""
+
+            # Try publicationVenue first - prefer abbreviation from alternate_names
+            pub_venue = data.get("publicationVenue")
+            if pub_venue:
+                # Look for short abbreviation in alternate_names (e.g., "ICML", "NeurIPS")
+                alt_names = pub_venue.get("alternate_names", [])
+                for name in alt_names:
+                    # Prefer short uppercase abbreviations
+                    if name.isupper() and len(name) <= 10:
+                        return f"{name}{year_suffix}"
+                # Fall back to first alternate name or full name
+                if alt_names:
+                    return f"{alt_names[0]}{year_suffix}"
+                if pub_venue.get("name"):
+                    return f"{pub_venue['name']}{year_suffix}"
+
+            # Fall back to venue string
+            venue = data.get("venue")
+            if venue:
+                return f"{venue}{year_suffix}"
+
+            return None
+        except Exception:
+            return None
 
     def _parse_response(self, xml_content: str, arxiv_id: str) -> ArxivPaperData:
         """Parse arXiv API XML response"""

@@ -71,6 +71,7 @@ class PaperResponse(BaseModel):
     arxiv_url: Optional[str] = None
     doi: Optional[str] = None
     paper_url: Optional[str] = None  # For ACM, IEEE, etc.
+    conference: Optional[str] = None  # Conference/venue name (e.g., ICML, NeurIPS)
     category: Category
     tags: List[TagInPaper]
     published_at: Optional[str] = None  # Publication date (YYYY-MM-DD)

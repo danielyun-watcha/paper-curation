@@ -19,6 +19,7 @@ export interface Paper {
   arxiv_url: string | null;
   doi: string | null;
   paper_url: string | null;
+  conference: string | null;
   category: Category;
   tags: Tag[];
   published_at: string | null;

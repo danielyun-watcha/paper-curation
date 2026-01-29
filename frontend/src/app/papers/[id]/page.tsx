@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Paper } from '@/types';
 import { papersApi } from '@/lib/api';
 import { PaperDetail } from '@/components/papers/PaperDetail';
+import { useFavorites } from '@/hooks/useFavorites';
 
 export default function PaperDetailPage() {
   const params = useParams();
@@ -12,6 +13,7 @@ export default function PaperDetailPage() {
   const [paper, setPaper] = useState<Paper | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   useEffect(() => {
     const fetchPaper = async () => {
@@ -61,7 +63,12 @@ export default function PaperDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <PaperDetail paper={paper} onDelete={handleDelete} />
+      <PaperDetail
+        paper={paper}
+        onDelete={handleDelete}
+        isFavorite={isFavorite(paper.id)}
+        onToggleFavorite={toggleFavorite}
+      />
     </div>
   );
 }

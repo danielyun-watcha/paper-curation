@@ -107,36 +107,6 @@ export function ArxivImporter() {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Source
-        </label>
-        <div className="flex gap-4">
-          <label className="flex items-center">
-            <input
-              type="radio"
-              name="source"
-              value="arxiv"
-              checked={source === 'arxiv'}
-              onChange={() => setSource('arxiv')}
-              className="mr-2"
-            />
-            arXiv
-          </label>
-          <label className="flex items-center">
-            <input
-              type="radio"
-              name="source"
-              value="doi"
-              checked={source === 'doi'}
-              onChange={() => setSource('doi')}
-              className="mr-2"
-            />
-            ACM / IEEE / DOI
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Category *
         </label>
         <select

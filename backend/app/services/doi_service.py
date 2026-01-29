@@ -17,6 +17,7 @@ class DoiPaperData:
     url: str
     source: str  # "acm", "ieee", "other"
     published_at: Optional[str] = None  # ISO date string
+    conference: Optional[str] = None  # Conference abbreviation (e.g., KDD, WWW)
 
 
 class DoiServiceError(Exception):
@@ -68,11 +69,11 @@ class DoiService:
                 source=source,
             )
 
-        # Use Semantic Scholar API (has title, authors, abstract, year, publicationDate)
+        # Use Semantic Scholar API (has title, authors, abstract, year, publicationDate, venue)
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self.SEMANTIC_SCHOLAR_API}{doi}",
-                params={"fields": "title,authors,abstract,year,publicationDate"},
+                params={"fields": "title,authors,abstract,year,publicationDate,venue,publicationVenue"},
             )
 
             if response.status_code == 404:
@@ -85,6 +86,9 @@ class DoiService:
 
             # Extract authors
             authors = [a.get("name", "") for a in data.get("authors", []) if a.get("name")]
+
+            # Extract conference abbreviation
+            conference = self._extract_conference(data)
 
             # Determine proper URL
             if source == "acm":
@@ -101,7 +105,35 @@ class DoiService:
                 url=paper_url,
                 source=source,
                 published_at=data.get("publicationDate"),  # "2025-09-07" format
+                conference=conference,
             )
+
+    def _extract_conference(self, data: dict) -> Optional[str]:
+        """Extract conference abbreviation from Semantic Scholar response"""
+        year = data.get("year")
+        year_suffix = f"'{str(year)[-2:]}" if year else ""
+
+        # Try publicationVenue first - prefer abbreviation from alternate_names
+        pub_venue = data.get("publicationVenue")
+        if pub_venue:
+            # Look for short abbreviation in alternate_names (e.g., "KDD", "WWW")
+            alt_names = pub_venue.get("alternate_names", [])
+            for name in alt_names:
+                # Prefer short uppercase abbreviations
+                if name.isupper() and len(name) <= 10:
+                    return f"{name}{year_suffix}"
+            # Fall back to first alternate name or full name
+            if alt_names:
+                return f"{alt_names[0]}{year_suffix}"
+            if pub_venue.get("name"):
+                return f"{pub_venue['name']}{year_suffix}"
+
+        # Fall back to venue string
+        venue = data.get("venue")
+        if venue:
+            return f"{venue}{year_suffix}"
+
+        return None
 
 
 _doi_service: Optional[DoiService] = None

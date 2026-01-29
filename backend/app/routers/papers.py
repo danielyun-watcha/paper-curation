@@ -131,6 +131,7 @@ async def import_from_arxiv(request: ArxivImportRequest):
         "year": paper_data.year,
         "arxiv_id": paper_data.arxiv_id,
         "arxiv_url": paper_data.arxiv_url,
+        "conference": paper_data.conference,
         "category": request.category,
         "tags": tags,
         "published_at": paper_data.published_at,
@@ -193,6 +194,7 @@ async def import_from_doi(request: DoiImportRequest):
         "arxiv_url": None,
         "doi": paper_data.doi,
         "paper_url": paper_data.url,
+        "conference": paper_data.conference,
         "category": request.category,
         "tags": tags,
         "published_at": paper_data.published_at,
@@ -257,7 +259,9 @@ async def list_papers(
         search_lower = search.lower()
         papers = [
             p for p in papers
-            if search_lower in p["title"].lower() or search_lower in p["abstract"].lower()
+            if search_lower in p["title"].lower()
+            or search_lower in p["abstract"].lower()
+            or (p.get("conference") and search_lower in p["conference"].lower())
         ]
 
     if category:
@@ -274,8 +278,8 @@ async def list_papers(
                 if any(t["name"].lower() in tag_names for t in p["tags"])
             ]
 
-    # Sort by created_at descending
-    papers = sorted(papers, key=lambda p: p["created_at"], reverse=True)
+    # Sort by updated_at descending (most recent first)
+    papers = sorted(papers, key=lambda p: p["updated_at"], reverse=True)
 
     total = len(papers)
     pages = ceil(total / limit) if total > 0 else 0

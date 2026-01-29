@@ -1,56 +1,24 @@
 {
   "papers": [
     {
-      "id": "be710ccb-4a64-4520-ad78-9f08fdb67de7",
-      "title": "Tree of Thoughts: Deliberate Problem Solving with Large Language Models",
+      "id": "6159a7d8-e767-49d6-a740-4fab9a545b57",
+      "title": "FuXi-\u03b2: Towards a Lightweight and Fast Large-Scale Generative Recommendation Model",
       "authors": [
-        "Shunyu Yao",
-        "Dian Yu",
-        "Jeffrey Zhao",
-        "Izhak Shafran",
-        "Thomas L. Griffiths",
-        "Yuan Cao",
-        "Karthik Narasimhan"
+        "Yufei Ye",
+        "Wei Guo",
+        "Hao Wang",
+        "Hong Zhu",
+        "Yuyang Ye",
+        "Yong Liu",
+        "Huifeng Guo",
+        "Ruiming Tang",
+        "Defu Lian",
+        "Enhong Chen"
       ],
-      "abstract": "Language models are increasingly being deployed for general problem solving across a wide range of tasks, but are still confined to token-level, left-to-right decision-making processes during inference. This means they can fall short in tasks that require exploration, strategic lookahead, or where initial decisions play a pivotal role. To surmount these challenges, we introduce a new framework for language model inference, Tree of Thoughts (ToT), which generalizes over the popular Chain of Thought approach to prompting language models, and enables exploration over coherent units of text (thoughts) that serve as intermediate steps toward problem solving. ToT allows LMs to perform deliberate decision making by considering multiple different reasoning paths and self-evaluating choices to decide the next course of action, as well as looking ahead or backtracking when necessary to make global choices. Our experiments show that ToT significantly enhances language models' problem-solving abilities on three novel tasks requiring non-trivial planning or search: Game of 24, Creative Writing, and Mini Crosswords. For instance, in Game of 24, while GPT-4 with chain-of-thought prompting only solved 4% of tasks, our method achieved a success rate of 74%. Code repo with all prompts: https://github.com/princeton-nlp/tree-of-thought-llm.",
-      "year": 2023,
-      "arxiv_id": "2305.10601",
-      "arxiv_url": "https://arxiv.org/abs/2305.10601",
-      "category": "recsys",
-      "tags": [
-        {
-          "id": "86afe8f0-5c9f-4b1b-bda9-ae95aa1fa5be",
-          "name": "LLM"
-        },
-        {
-          "id": "302859db-9e76-45a8-b984-61f43d889c96",
-          "name": "Transformer"
-        }
-      ],
-      "created_at": "2026-01-29T16:56:07.997771",
-      "updated_at": "2026-01-29T16:56:07.997771"
-    },
-    {
-      "id": "9ecdcbaf-7ed9-4265-8201-9b199daa6b8b",
-      "title": "Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations",
-      "authors": [
-        "Jiaqi Zhai",
-        "Lucy Liao",
-        "Xing Liu",
-        "Yueming Wang",
-        "Rui Li",
-        "Xuan Cao",
-        "Leon Gao",
-        "Zhaojie Gong",
-        "Fangda Gu",
-        "Michael He",
-        "Yinghai Lu",
-        "Yu Shi"
-      ],
-      "abstract": "Large-scale recommendation systems are characterized by their reliance on high cardinality, heterogeneous features and the need to handle tens of billions of user actions on a daily basis. Despite being trained on huge volume of data with thousands of features, most Deep Learning Recommendation Models (DLRMs) in industry fail to scale with compute. Inspired by success achieved by Transformers in language and vision domains, we revisit fundamental design choices in recommendation systems. We reformulate recommendation problems as sequential transduction tasks within a generative modeling framework (\"Generative Recommenders\"), and propose a new architecture, HSTU, designed for high cardinality, non-stationary streaming recommendation data. HSTU outperforms baselines over synthetic and public datasets by up to 65.8% in NDCG, and is 5.3x to 15.2x faster than FlashAttention2-based Transformers on 8192 length sequences. HSTU-based Generative Recommenders, with 1.5 trillion parameters, improve metrics in online A/B tests by 12.4% and have been deployed on multiple surfaces of a large internet platform with billions of users. More importantly, the model quality of Generative Recommenders empirically scales as a power-law of training compute across three orders of magnitude, up to GPT-3/LLaMa-2 scale, which reduces carbon footprint needed for future model developments, and further paves the way for the first foundational models in recommendations.",
-      "year": 2024,
-      "arxiv_id": "2402.17152",
-      "arxiv_url": "https://arxiv.org/abs/2402.17152",
+      "abstract": "Scaling laws for autoregressive generative recommenders reveal potential for larger, more versatile systems but mean greater latency and training costs. To accelerate training and inference, we investigated the recent generative recommendation models HSTU and FuXi-$\u03b1$, identifying two efficiency bottlenecks: the indexing operations in relative temporal attention bias and the computation of the query-key attention map. Additionally, we observed that relative attention bias in self-attention mechanisms can also serve as attention maps. Previous works like Synthesizer have shown that alternative forms of attention maps can achieve similar performance, naturally raising the question of whether some attention maps are redundant. Through empirical experiments, we discovered that using the query-key attention map might degrade the model's performance in recommendation tasks. To address these bottlenecks, we propose a new framework applicable to Transformer-like recommendation models. On one hand, we introduce Functional Relative Attention Bias, which avoids the time-consuming operations of the original relative attention bias, thereby accelerating the process. On the other hand, we remove the query-key attention map from the original self-attention layer and design a new Attention-Free Token Mixer module. Furthermore, by applying this framework to FuXi-$\u03b1$, we introduce a new model, FuXi-$\u03b2$. Experiments across multiple datasets demonstrate that FuXi-$\u03b2$ outperforms previous state-of-the-art models and achieves significant acceleration compared to FuXi-$\u03b1$, while also adhering to the scaling law. Notably, FuXi-$\u03b2$ shows an improvement of 27% to 47% in the NDCG@10 metric on large-scale industrial datasets compared to FuXi-$\u03b1$. Our code is available in a public repository: https://github.com/USTC-StarTeam/FuXi-beta",
+      "year": 2025,
+      "arxiv_id": "2508.10615",
+      "arxiv_url": "https://arxiv.org/abs/2508.10615",
       "category": "recsys",
       "tags": [
         {
@@ -58,43 +26,16 @@
           "name": "Industrial"
         },
         {
-          "id": "86afe8f0-5c9f-4b1b-bda9-ae95aa1fa5be",
-          "name": "LLM"
-        },
-        {
-          "id": "3aaf48f3-7ba1-4a61-98f0-8baaad8024ed",
-          "name": "Sequential"
+          "id": "302859db-9e76-45a8-b984-61f43d889c96",
+          "name": "Transformer"
         }
       ],
-      "created_at": "2026-01-29T17:15:12.831380",
-      "updated_at": "2026-01-29T17:15:12.831380"
+      "published_at": "2025-08-14",
+      "created_at": "2026-01-29T18:16:45.255432",
+      "updated_at": "2026-01-29T18:16:45.255432"
     },
     {
-      "id": "fae40003-6498-4154-9761-b56ffee4672a",
-      "title": "Rethinking Overconfidence in VAEs: Can Label Smoothing Help?",
-      "authors": [
-        "Woo-Seong Yun",
-        "YeoJun Choi",
-        "Yoon-Sik Cho"
-      ],
-      "abstract": "By leveraging the expressive power of deep generative models, Variational Autoencoder (VAE)-based recommender models have demonstrated competitive performance. However, deep neural networks (DNNs) tend to exhibit overconfidence in their predictive distributions as training progresses. This issue is further exacerbated by two inherent characteristics of collaborative filtering (CF): (1) extreme data sparsity and (2) implicit feedback. Despite its importance, there has been a lack of systematic study into this problem. To fill the gap, this paper explores the above limitations with label smoothing (LS) from both theoretical and empirical aspects. Our extensive analysis demonstrates that overconfidence leads to embedding collapse, where latent representations collapse into a narrow subspace. Furthermore, we investigate the conditions under which LS helps recommendation, and observe that the optimal LS factor decreases proportionally with data sparsity. To the best of our knowledge, this is the first study in VAE-based CF that discovers the relationship between overconfidence and embedding collapse, and highlights the necessity of explicitly addressing them. Our code is available at https://github.com/yunwooseong/RethinkVAE.",
-      "year": 2025,
-      "arxiv_id": null,
-      "arxiv_url": null,
-      "doi": "10.1145/3705328.3748039",
-      "paper_url": "https://dl.acm.org/doi/10.1145/3705328.3748039",
-      "category": "recsys",
-      "tags": [
-        {
-          "id": "3e36ba36-2a7d-4cb5-9b57-83f4e1cee79a",
-          "name": "VAE"
-        }
-      ],
-      "created_at": "2026-01-29T17:15:30.701343",
-      "updated_at": "2026-01-29T17:15:30.701343"
-    },
-    {
-      "id": "a52365fc-216c-4cf5-bd2c-2d4b47ce930a",
+      "id": "0bc487da-337c-4aaa-a377-55b82880620a",
       "title": "FuXi-$\u03b1$: Scaling Recommendation Model with Feature Interaction Enhanced Transformer",
       "authors": [
         "Yufei Ye",
@@ -128,40 +69,144 @@
           "name": "Transformer"
         }
       ],
-      "created_at": "2026-01-29T17:22:47.971750",
-      "updated_at": "2026-01-29T17:22:47.971750"
+      "published_at": "2025-02-05",
+      "created_at": "2026-01-29T18:17:13.221185",
+      "updated_at": "2026-01-29T18:17:13.221185",
+      "conference": "WWW'25"
     },
     {
-      "id": "9733f0c2-a50b-454c-b747-b6e5d86eed97",
-      "title": "FuXi-\u03b2: Towards a Lightweight and Fast Large-Scale Generative Recommendation Model",
+      "id": "e21a2e83-325b-4b34-bf15-d4acd105742b",
+      "title": "Rethinking Overconfidence in VAEs: Can Label Smoothing Help?",
       "authors": [
-        "Yufei Ye",
-        "Wei Guo",
-        "Hao Wang",
-        "Hong Zhu",
-        "Yuyang Ye",
-        "Yong Liu",
-        "Huifeng Guo",
-        "Ruiming Tang",
-        "Defu Lian",
-        "Enhong Chen"
+        "Woo-Seong Yun",
+        "Yeojun Choi",
+        "Yoonsik Cho"
       ],
-      "abstract": "Scaling laws for autoregressive generative recommenders reveal potential for larger, more versatile systems but mean greater latency and training costs. To accelerate training and inference, we investigated the recent generative recommendation models HSTU and FuXi-$\u03b1$, identifying two efficiency bottlenecks: the indexing operations in relative temporal attention bias and the computation of the query-key attention map. Additionally, we observed that relative attention bias in self-attention mechanisms can also serve as attention maps. Previous works like Synthesizer have shown that alternative forms of attention maps can achieve similar performance, naturally raising the question of whether some attention maps are redundant. Through empirical experiments, we discovered that using the query-key attention map might degrade the model's performance in recommendation tasks. To address these bottlenecks, we propose a new framework applicable to Transformer-like recommendation models. On one hand, we introduce Functional Relative Attention Bias, which avoids the time-consuming operations of the original relative attention bias, thereby accelerating the process. On the other hand, we remove the query-key attention map from the original self-attention layer and design a new Attention-Free Token Mixer module. Furthermore, by applying this framework to FuXi-$\u03b1$, we introduce a new model, FuXi-$\u03b2$. Experiments across multiple datasets demonstrate that FuXi-$\u03b2$ outperforms previous state-of-the-art models and achieves significant acceleration compared to FuXi-$\u03b1$, while also adhering to the scaling law. Notably, FuXi-$\u03b2$ shows an improvement of 27% to 47% in the NDCG@10 metric on large-scale industrial datasets compared to FuXi-$\u03b1$. Our code is available in a public repository: https://github.com/USTC-StarTeam/FuXi-beta",
+      "abstract": "By leveraging the expressive power of deep generative models, Variational Autoencoder (VAE)-based recommender models have demonstrated competitive performance. However, deep neural networks (DNNs) tend to exhibit overconfidence in their predictive distributions as training progresses. This issue is further exacerbated by two inherent characteristics of collaborative filtering (CF): (1) extreme data sparsity and (2) implicit feedback. Despite its importance, there has been a lack of systematic study into this problem. To fill the gap, this paper explores the above limitations with label smoothing (LS) from both theoretical and empirical aspects. Our extensive analysis demonstrates that overconfidence leads to embedding collapse, where latent representations collapse into a narrow subspace. Furthermore, we investigate the conditions under which LS helps recommendation, and observe that the optimal LS factor decreases proportionally with data sparsity. To the best of our knowledge, this is the first study in VAE-based CF that discovers the relationship between overconfidence and embedding collapse, and highlights the necessity of explicitly addressing them. Our code is available at https://github.com/yunwooseong/RethinkVAE.",
       "year": 2025,
-      "arxiv_id": "2508.10615",
-      "arxiv_url": "https://arxiv.org/abs/2508.10615",
+      "arxiv_id": null,
+      "arxiv_url": null,
+      "doi": "10.1145/3705328.3748039",
+      "paper_url": "https://dl.acm.org/doi/10.1145/3705328.3748039",
       "category": "recsys",
       "tags": [
+        {
+          "id": "3e36ba36-2a7d-4cb5-9b57-83f4e1cee79a",
+          "name": "VAE"
+        }
+      ],
+      "published_at": "2025-09-22",
+      "created_at": "2026-01-29T18:17:24.423618",
+      "updated_at": "2026-01-29T18:17:24.423618",
+      "conference": "RecSys'25"
+    },
+    {
+      "id": "3b59362b-ee9a-43db-8384-8ad5564f013a",
+      "title": "Tree of Thoughts: Deliberate Problem Solving with Large Language Models",
+      "authors": [
+        "Shunyu Yao",
+        "Dian Yu",
+        "Jeffrey Zhao",
+        "Izhak Shafran",
+        "Thomas L. Griffiths",
+        "Yuan Cao",
+        "Karthik Narasimhan"
+      ],
+      "abstract": "Language models are increasingly being deployed for general problem solving across a wide range of tasks, but are still confined to token-level, left-to-right decision-making processes during inference. This means they can fall short in tasks that require exploration, strategic lookahead, or where initial decisions play a pivotal role. To surmount these challenges, we introduce a new framework for language model inference, Tree of Thoughts (ToT), which generalizes over the popular Chain of Thought approach to prompting language models, and enables exploration over coherent units of text (thoughts) that serve as intermediate steps toward problem solving. ToT allows LMs to perform deliberate decision making by considering multiple different reasoning paths and self-evaluating choices to decide the next course of action, as well as looking ahead or backtracking when necessary to make global choices. Our experiments show that ToT significantly enhances language models' problem-solving abilities on three novel tasks requiring non-trivial planning or search: Game of 24, Creative Writing, and Mini Crosswords. For instance, in Game of 24, while GPT-4 with chain-of-thought prompting only solved 4% of tasks, our method achieved a success rate of 74%. Code repo with all prompts: https://github.com/princeton-nlp/tree-of-thought-llm.",
+      "year": 2023,
+      "arxiv_id": "2305.10601",
+      "arxiv_url": "https://arxiv.org/abs/2305.10601",
+      "category": "recsys",
+      "tags": [
+        {
+          "id": "86afe8f0-5c9f-4b1b-bda9-ae95aa1fa5be",
+          "name": "LLM"
+        },
         {
           "id": "302859db-9e76-45a8-b984-61f43d889c96",
           "name": "Transformer"
         }
       ],
-      "created_at": "2026-01-29T17:23:41.473136",
-      "updated_at": "2026-01-29T17:23:41.473136"
+      "published_at": "2023-05-17",
+      "created_at": "2026-01-29T18:17:44.088329",
+      "updated_at": "2026-01-29T18:17:44.088329",
+      "conference": "NeurIPS'23"
     },
     {
-      "id": "b556a281-3be6-4180-bf83-24260f8e4fcd",
+      "id": "1290e19a-7664-4a23-8abb-c9d7d0d26d2c",
+      "title": "FuXi-$\u03b3$: Efficient Sequential Recommendation with Exponential-Power Temporal Encoder and Diagonal-Sparse Positional Mechanism",
+      "authors": [
+        "Dezhi Yi",
+        "Wei Guo",
+        "Wenyang Cui",
+        "Wenxuan He",
+        "Huifeng Guo",
+        "Yong Liu",
+        "Zhenhua Dong",
+        "Ye Lu"
+      ],
+      "abstract": "Sequential recommendation aims to model users' evolving preferences based on their historical interactions. Recent advances leverage Transformer-based architectures to capture global dependencies, but existing methods often suffer from high computational overhead, primarily due to discontinuous memory access in temporal encoding and dense attention over long sequences. To address these limitations, we propose FuXi-$\u03b3$, a novel sequential recommendation framework that improves both effectiveness and efficiency through principled architectural design. FuXi-$\u03b3$ adopts a decoder-only Transformer structure and introduces two key innovations: (1) An exponential-power temporal encoder that encodes relative temporal intervals using a tunable exponential decay function inspired by the Ebbinghaus forgetting curve. This encoder enables flexible modeling of both short-term and long-term preferences while maintaining high efficiency through continuous memory access and pure matrix operations. (2) A diagonal-sparse positional mechanism that prunes low-contribution attention blocks using a diagonal-sliding strategy guided by the persymmetry of Toeplitz matrix. Extensive experiments on four real-world datasets demonstrate that FuXi-$\u03b3$ achieves state-of-the-art performance in recommendation quality, while accelerating training by up to 4.74$\\times$ and inference by up to 6.18$\\times$, making it a practical and scalable solution for long-sequence recommendation. Our code is available at https://github.com/Yeedzhi/FuXi-gamma.",
+      "year": 2025,
+      "arxiv_id": "2512.12740",
+      "arxiv_url": "https://arxiv.org/abs/2512.12740",
+      "category": "recsys",
+      "tags": [
+        {
+          "id": "3aaf48f3-7ba1-4a61-98f0-8baaad8024ed",
+          "name": "Sequential"
+        },
+        {
+          "id": "302859db-9e76-45a8-b984-61f43d889c96",
+          "name": "Transformer"
+        }
+      ],
+      "published_at": "2025-12-14",
+      "created_at": "2026-01-29T18:20:45.141059",
+      "updated_at": "2026-01-29T18:20:45.141059"
+    },
+    {
+      "id": "7cd0cabf-95fb-449b-a16a-416cedab060d",
+      "title": "Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations",
+      "authors": [
+        "Jiaqi Zhai",
+        "Lucy Liao",
+        "Xing Liu",
+        "Yueming Wang",
+        "Rui Li",
+        "Xuan Cao",
+        "Leon Gao",
+        "Zhaojie Gong",
+        "Fangda Gu",
+        "Michael He",
+        "Yinghai Lu",
+        "Yu Shi"
+      ],
+      "abstract": "Large-scale recommendation systems are characterized by their reliance on high cardinality, heterogeneous features and the need to handle tens of billions of user actions on a daily basis. Despite being trained on huge volume of data with thousands of features, most Deep Learning Recommendation Models (DLRMs) in industry fail to scale with compute. Inspired by success achieved by Transformers in language and vision domains, we revisit fundamental design choices in recommendation systems. We reformulate recommendation problems as sequential transduction tasks within a generative modeling framework (\"Generative Recommenders\"), and propose a new architecture, HSTU, designed for high cardinality, non-stationary streaming recommendation data. HSTU outperforms baselines over synthetic and public datasets by up to 65.8% in NDCG, and is 5.3x to 15.2x faster than FlashAttention2-based Transformers on 8192 length sequences. HSTU-based Generative Recommenders, with 1.5 trillion parameters, improve metrics in online A/B tests by 12.4% and have been deployed on multiple surfaces of a large internet platform with billions of users. More importantly, the model quality of Generative Recommenders empirically scales as a power-law of training compute across three orders of magnitude, up to GPT-3/LLaMa-2 scale, which reduces carbon footprint needed for future model developments, and further paves the way for the first foundational models in recommendations.",
+      "year": 2024,
+      "arxiv_id": "2402.17152",
+      "arxiv_url": "https://arxiv.org/abs/2402.17152",
+      "conference": "ICML'24",
+      "category": "recsys",
+      "tags": [
+        {
+          "id": "e3f8c350-ed68-44e0-ba52-f32be9e17659",
+          "name": "Industrial"
+        },
+        {
+          "id": "86afe8f0-5c9f-4b1b-bda9-ae95aa1fa5be",
+          "name": "LLM"
+        },
+        {
+          "id": "3aaf48f3-7ba1-4a61-98f0-8baaad8024ed",
+          "name": "Sequential"
+        }
+      ],
+      "published_at": "2024-02-27",
+      "created_at": "2026-01-29T18:36:45.020247",
+      "updated_at": "2026-01-29T18:36:45.020247"
+    },
+    {
+      "id": "efb35aed-82e1-4303-a8d7-03afd89ef23f",
       "title": "LightKG: Efficient Knowledge-Aware Recommendations with Simplified GNN Architecture",
       "authors": [
         "Yanhui Li",
@@ -170,10 +215,13 @@
         "Haonan Zhang",
         "Huizhong Guo"
       ],
-      "abstract": "Recently, Graph Neural Networks (GNNs) have become the dominant approach for Knowledge Graph-aware Recommender Systems (KGRSs) due to their proven effectiveness. Building upon GNN-based KGRSs, Self-Supervised Learning (SSL) has been incorporated to address the sparity issue, leading to longer training time. However, through extensive experiments, we reveal that: (1)compared to other KGRSs, the existing GNN-based KGRSs fail to keep their superior performance under sparse interactions even with SSL. (2) More complex models tend to perform worse in sparse interaction scenarios and complex mechanisms, like attention mechanism, can be detrimental as they often increase learning difficulty. Inspired by these findings, we propose LightKG, a simple yet powerful GNN-based KGRS to address sparsity issues. LightKG includes a simplified GNN layer that encodes directed relations as scalar pairs rather than dense embeddings and employs a linear aggregation framework, greatly reducing the complexity of GNNs. Additionally, LightKG incorporates an efficient contrastive layer to implement SSL. It directly minimizes the node similarity in original graph, avoiding the time-consuming subgraph generation and comparison required in previous SSL methods. Experiments on four benchmark datasets show that LightKG outperforms 12 competitive KGRSs in both sparse and dense scenarios while significantly reducing training time. Specifically, it surpasses the best baselines by an average of 5.8\\% in recommendation accuracy and saves 84.3\\% of training time compared to KGRSs with SSL. Our code is available at https://github.com/1371149/LightKG.",
+      "abstract": "Recently, Graph Neural Networks (GNNs) have become the dominant approach for Knowledge Graph-aware Recommender Systems (KGRSs) due to their proven effectiveness. Building upon GNN-based KGRSs, Self-Supervised Learning (SSL) has been incorporated to address the sparity issue, leading to longer training time. However, through extensive experiments, we reveal that: (1)compared to other KGRSs, the existing GNN-based KGRSs fail to keep their superior performance under sparse interactions even with SSL. (2) More complex models tend to perform worse in sparse interaction scenarios and complex mechanisms, like attention mechanism, can be detrimental as they often increase learning difficulty. Inspired by these findings, we propose LightKG, a simple yet powerful GNN-based KGRS to address sparsity issues. LightKG includes a simplified GNN layer that encodes directed relations as scalar pairs rather than dense embeddings and employs a linear aggregation framework, greatly reducing the complexity of GNNs. Additionally, LightKG incorporates an efficient contrastive layer to implement SSL. It directly minimizes the node similarity in original graph, avoiding the time-consuming subgraph generation and comparison required in previous SSL methods. Experiments on four benchmark datasets show that LightKG outperforms 12 competitive KGRSs in both sparse and dense scenarios while significantly reducing training time. Specifically, it surpasses the best baselines by an average of 5.8% in recommendation accuracy and saves 84.3% of training time compared to KGRSs with SSL. Our code is available at https://github.com/1371149/LightKG.",
       "year": 2025,
-      "arxiv_id": "2506.10347",
-      "arxiv_url": "https://arxiv.org/abs/2506.10347",
+      "arxiv_id": null,
+      "arxiv_url": null,
+      "doi": "10.1145/3711896.3737026",
+      "paper_url": "https://dl.acm.org/doi/10.1145/3711896.3737026",
+      "conference": "KDD'25",
       "category": "recsys",
       "tags": [
         {
@@ -186,8 +234,8 @@
         }
       ],
       "published_at": "2025-06-12",
-      "created_at": "2026-01-29T18:09:22.254953",
-      "updated_at": "2026-01-29T18:09:22.254953"
+      "created_at": "2026-01-29T18:45:57.419063",
+      "updated_at": "2026-01-29T18:45:57.419063"
     }
   ],
   "tags": [
