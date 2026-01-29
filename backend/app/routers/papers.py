@@ -269,7 +269,7 @@ async def list_papers(
         if tag_names:
             papers = [
                 p for p in papers
-                if any(t["name"] in tag_names for t in p["tags"])
+                if any(t["name"].lower() in tag_names for t in p["tags"])
             ]
 
     # Sort by created_at descending
