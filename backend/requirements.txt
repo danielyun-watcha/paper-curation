@@ -1,0 +1,16 @@
+# FastAPI
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+
+# Validation & Settings
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# HTTP Client (for arXiv API)
+httpx==0.26.0
+
+# XML Parsing (for arXiv API)
+defusedxml==0.7.1
+
+# Utils
+python-dotenv==1.0.1
