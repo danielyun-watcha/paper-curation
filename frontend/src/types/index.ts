@@ -21,6 +21,7 @@ export interface Paper {
   paper_url: string | null;
   category: Category;
   tags: Tag[];
+  published_at: string | null;
   created_at: string;
   updated_at: string;
 }

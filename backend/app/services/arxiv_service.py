@@ -17,6 +17,7 @@ class ArxivPaperData:
     abstract: str
     year: int
     arxiv_url: str
+    published_at: str  # ISO date string (e.g., "2025-06-12")
 
 
 class ArxivServiceError(Exception):
@@ -127,7 +128,8 @@ class ArxivService:
         published_elem = entry.find("atom:published", self.NAMESPACES)
         if published_elem is None or not published_elem.text:
             raise ArxivParseError("No publication date found")
-        year = int(published_elem.text[:4])
+        published_at = published_elem.text[:10]  # "2025-06-12T..."" -> "2025-06-12"
+        year = int(published_at[:4])
 
         # Construct arXiv URL
         arxiv_url = f"https://arxiv.org/abs/{arxiv_id}"
@@ -139,6 +141,7 @@ class ArxivService:
             abstract=abstract,
             year=year,
             arxiv_url=arxiv_url,
+            published_at=published_at,
         )
 
 

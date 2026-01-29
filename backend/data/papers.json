@@ -161,7 +161,7 @@
       "updated_at": "2026-01-29T17:23:41.473136"
     },
     {
-      "id": "8e084cb3-ea21-4194-9a43-75a3ab95fecf",
+      "id": "b556a281-3be6-4180-bf83-24260f8e4fcd",
       "title": "LightKG: Efficient Knowledge-Aware Recommendations with Simplified GNN Architecture",
       "authors": [
         "Yanhui Li",
@@ -185,8 +185,9 @@
           "name": "Transformer"
         }
       ],
-      "created_at": "2026-01-29T17:28:14.018000",
-      "updated_at": "2026-01-29T17:28:14.018000"
+      "published_at": "2025-06-12",
+      "created_at": "2026-01-29T18:09:22.254953",
+      "updated_at": "2026-01-29T18:09:22.254953"
     }
   ],
   "tags": [

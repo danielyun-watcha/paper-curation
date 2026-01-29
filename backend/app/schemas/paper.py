@@ -73,6 +73,7 @@ class PaperResponse(BaseModel):
     paper_url: Optional[str] = None  # For ACM, IEEE, etc.
     category: Category
     tags: List[TagInPaper]
+    published_at: Optional[str] = None  # Publication date (YYYY-MM-DD)
     created_at: datetime
     updated_at: datetime
 

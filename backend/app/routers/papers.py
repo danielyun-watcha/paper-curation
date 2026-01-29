@@ -133,6 +133,7 @@ async def import_from_arxiv(request: ArxivImportRequest):
         "arxiv_url": paper_data.arxiv_url,
         "category": request.category,
         "tags": tags,
+        "published_at": paper_data.published_at,
         "created_at": now,
         "updated_at": now,
     }
@@ -194,6 +195,7 @@ async def import_from_doi(request: DoiImportRequest):
         "paper_url": paper_data.url,
         "category": request.category,
         "tags": tags,
+        "published_at": paper_data.published_at,
         "created_at": now,
         "updated_at": now,
     }

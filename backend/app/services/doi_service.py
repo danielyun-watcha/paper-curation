@@ -16,6 +16,7 @@ class DoiPaperData:
     doi: str
     url: str
     source: str  # "acm", "ieee", "other"
+    published_at: Optional[str] = None  # ISO date string
 
 
 class DoiServiceError(Exception):
@@ -67,11 +68,11 @@ class DoiService:
                 source=source,
             )
 
-        # Use Semantic Scholar API (has title, authors, abstract, year)
+        # Use Semantic Scholar API (has title, authors, abstract, year, publicationDate)
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self.SEMANTIC_SCHOLAR_API}{doi}",
-                params={"fields": "title,authors,abstract,year"},
+                params={"fields": "title,authors,abstract,year,publicationDate"},
             )
 
             if response.status_code == 404:
@@ -99,6 +100,7 @@ class DoiService:
                 doi=doi,
                 url=paper_url,
                 source=source,
+                published_at=data.get("publicationDate"),  # "2025-09-07" format
             )
 
 

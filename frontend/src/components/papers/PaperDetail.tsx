@@ -79,23 +79,16 @@ export function PaperDetail({ paper, onDelete }: PaperDetailProps) {
           </div>
         )}
 
-        <div>
-          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            Created
-          </h3>
-          <p className="text-gray-800 dark:text-gray-200">
-            {formatDate(paper.created_at)}
-          </p>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-            Updated
-          </h3>
-          <p className="text-gray-800 dark:text-gray-200">
-            {formatDate(paper.updated_at)}
-          </p>
-        </div>
+        {paper.published_at && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Published
+            </h3>
+            <p className="text-gray-800 dark:text-gray-200">
+              {paper.published_at}
+            </p>
+          </div>
+        )}
       </div>
 
       {paper.tags.length > 0 && (
