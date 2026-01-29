@@ -13,7 +13,7 @@ ML/AI 연구자를 위한 논문 큐레이션 웹사이트. arXiv, ACM, IEEE 논
 
 ### 논문 Import
 - **arXiv**: URL 입력시 메타데이터 자동 추출 (제목, 저자, 초록, 년도)
-- **ACM/IEEE/DOI**: CrossRef + Semantic Scholar API로 메타데이터 가져오기
+- **ACM/DOI**: Semantic Scholar API로 메타데이터 가져오기 (제목, 저자, 초록, 년도)
 
 ### 자동 태그 예측
 논문 추가시 태그를 선택하지 않으면 제목/초록을 분석하여 자동으로 태그 추천 (최대 3개):
