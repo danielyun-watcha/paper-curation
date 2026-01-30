@@ -5,6 +5,14 @@ from app.schemas.paper import (
     PaperListResponse,
     ArxivImportRequest,
     DoiImportRequest,
+    BulkImportRequest,
+    BulkImportResponse,
+    BulkImportResultItem,
+    PaperSummaryData,
+    PreviewImportRequest,
+    PreviewItem,
+    PreviewImportResponse,
+    BulkImportWithCategoriesRequest,
 )
 from app.schemas.tag import TagCreate, TagResponse, TagWithCountResponse
 
@@ -15,6 +23,13 @@ __all__ = [
     "PaperListResponse",
     "ArxivImportRequest",
     "DoiImportRequest",
+    "BulkImportRequest",
+    "BulkImportResponse",
+    "BulkImportResultItem",
+    "PreviewImportRequest",
+    "PreviewItem",
+    "PreviewImportResponse",
+    "BulkImportWithCategoriesRequest",
     "TagCreate",
     "TagResponse",
     "TagWithCountResponse",

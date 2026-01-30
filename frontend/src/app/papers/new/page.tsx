@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { ArxivImporter } from '@/components/papers/ArxivImporter';
 import { PaperForm } from '@/components/papers/PaperForm';
+import { PdfUploader } from '@/components/papers/PdfUploader';
 
-type Mode = 'arxiv' | 'manual';
+type Mode = 'url' | 'pdf' | 'manual';
 
 export default function NewPaperPage() {
-  const [mode, setMode] = useState<Mode>('arxiv');
+  const [mode, setMode] = useState<Mode>('url');
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -16,16 +17,26 @@ export default function NewPaperPage() {
       </h1>
 
       <div className="mb-6">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => setMode('arxiv')}
+            onClick={() => setMode('url')}
             className={`px-4 py-2 rounded-md transition-colors ${
-              mode === 'arxiv'
+              mode === 'url'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
             }`}
           >
-            Import from arXiv
+            URL Import
+          </button>
+          <button
+            onClick={() => setMode('pdf')}
+            className={`px-4 py-2 rounded-md transition-colors ${
+              mode === 'pdf'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+            }`}
+          >
+            PDF Upload
           </button>
           <button
             onClick={() => setMode('manual')}
@@ -41,8 +52,10 @@ export default function NewPaperPage() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        {mode === 'arxiv' ? (
+        {mode === 'url' ? (
           <ArxivImporter />
+        ) : mode === 'pdf' ? (
+          <PdfUploader />
         ) : (
           <PaperForm mode="create" />
         )}

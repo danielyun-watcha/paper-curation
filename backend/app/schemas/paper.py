@@ -60,6 +60,21 @@ class PaperUpdate(BaseModel):
     tags: Optional[List[str]] = None
 
 
+class PaperSummaryData(BaseModel):
+    """Schema for paper summary"""
+    one_line: Optional[str] = None
+    contribution: Optional[str] = None
+    methodology: Optional[str] = None
+    results: Optional[str] = None
+
+
+class TranslationSection(BaseModel):
+    """Schema for a translated section"""
+    name: str
+    original: str
+    translated: str
+
+
 class PaperResponse(BaseModel):
     """Schema for paper response"""
     id: UUID
@@ -75,6 +90,11 @@ class PaperResponse(BaseModel):
     category: Category
     tags: List[TagInPaper]
     published_at: Optional[str] = None  # Publication date (YYYY-MM-DD)
+    pdf_path: Optional[str] = None  # Uploaded PDF filename
+    summary: Optional[PaperSummaryData] = None  # AI-generated summary
+    translation: Optional[dict] = None  # Title/abstract translation
+    full_translation: Optional[List[TranslationSection]] = None  # Full paper translation by sections
+    full_summary: Optional[str] = None  # Full paper summary
     created_at: datetime
     updated_at: datetime
 
@@ -89,3 +109,54 @@ class PaperListResponse(BaseModel):
     page: int
     limit: int
     pages: int
+
+
+class BulkImportRequest(BaseModel):
+    """Schema for bulk importing papers"""
+    urls: List[str] = Field(..., description="List of arXiv or DOI URLs")
+    category: Optional[Category] = Field(None, description="Category for all papers (auto-predict if not provided)")
+
+
+class PreviewImportRequest(BaseModel):
+    """Schema for previewing papers before import"""
+    urls: List[str] = Field(..., description="List of arXiv or DOI URLs")
+
+
+class PreviewItem(BaseModel):
+    """Preview item for a single paper"""
+    url: str
+    title: Optional[str] = None
+    category: Category = Category.OTHER
+    error: Optional[str] = None
+
+
+class PreviewImportResponse(BaseModel):
+    """Schema for preview import response"""
+    previews: List[PreviewItem]
+
+
+class BulkImportItem(BaseModel):
+    """Single item for bulk import with category"""
+    url: str
+    category: Category
+
+
+class BulkImportWithCategoriesRequest(BaseModel):
+    """Schema for bulk importing papers with individual categories"""
+    items: List[BulkImportItem]
+
+
+class BulkImportResultItem(BaseModel):
+    """Result for a single paper import"""
+    url: str
+    success: bool
+    title: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BulkImportResponse(BaseModel):
+    """Schema for bulk import response"""
+    total: int
+    successful: int
+    failed: int
+    results: List[BulkImportResultItem]

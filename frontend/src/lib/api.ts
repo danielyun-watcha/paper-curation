@@ -7,6 +7,13 @@ import {
   DoiImportRequest,
   PaperFilters,
   TagWithCount,
+  BulkImportRequest,
+  BulkImportResponse,
+  PaperSummary,
+  TranslationResponse,
+  PreviewImportRequest,
+  PreviewImportResponse,
+  BulkImportWithCategoriesRequest,
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -92,6 +99,77 @@ export const papersApi = {
     await fetchApi(`/api/papers/${id}`, {
       method: 'DELETE',
     });
+  },
+
+  getYears: async (): Promise<number[]> => {
+    return fetchApi<number[]>('/api/papers/years');
+  },
+
+  bulkImport: async (data: BulkImportRequest): Promise<BulkImportResponse> => {
+    return fetchApi<BulkImportResponse>('/api/papers/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  previewImport: async (data: PreviewImportRequest): Promise<PreviewImportResponse> => {
+    return fetchApi<PreviewImportResponse>('/api/papers/preview', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  bulkImportWithCategories: async (data: BulkImportWithCategoriesRequest): Promise<BulkImportResponse> => {
+    return fetchApi<BulkImportResponse>('/api/papers/bulk-with-categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  generateSummary: async (id: string): Promise<PaperSummary> => {
+    return fetchApi<PaperSummary>(`/api/papers/${id}/summary`, {
+      method: 'POST',
+    });
+  },
+
+  translate: async (id: string): Promise<TranslationResponse> => {
+    return fetchApi<TranslationResponse>(`/api/papers/${id}/translate`, {
+      method: 'POST',
+    });
+  },
+
+  uploadPdf: async (
+    pdf: File,
+    data: {
+      title: string;
+      authors: string;
+      abstract: string;
+      year: number;
+      category: string;
+      tags: string;
+    }
+  ): Promise<Paper> => {
+    const formData = new FormData();
+    formData.append('pdf', pdf);
+    formData.append('title', data.title);
+    formData.append('authors', data.authors);
+    formData.append('abstract', data.abstract);
+    formData.append('year', String(data.year));
+    formData.append('category', data.category);
+    formData.append('tags', data.tags);
+
+    const url = `${API_BASE_URL}/api/papers/upload-pdf`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new ApiError(response.status, error.detail || 'Upload failed');
+    }
+
+    return response.json();
   },
 };
 

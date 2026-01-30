@@ -25,7 +25,7 @@ export function useFavorites() {
   // Save to localStorage whenever favorites change
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(favorites)));
     }
   }, [favorites, isLoaded]);
 
@@ -46,7 +46,7 @@ export function useFavorites() {
     });
   }, []);
 
-  const getFavoriteIds = useCallback(() => [...favorites], [favorites]);
+  const getFavoriteIds = useCallback(() => Array.from(favorites), [favorites]);
 
   return {
     isFavorite,

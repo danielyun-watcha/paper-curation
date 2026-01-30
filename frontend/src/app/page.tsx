@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Paper, PaperFilters, Category, TagWithCount } from '@/types';
 import { papersApi, tagsApi } from '@/lib/api';
 import { PaperCard } from '@/components/papers/PaperCard';
@@ -8,11 +8,12 @@ import { SearchBar } from '@/components/filters/SearchBar';
 import { CategoryFilter } from '@/components/filters/CategoryFilter';
 import { TagFilter } from '@/components/filters/TagFilter';
 import { Pagination } from '@/components/ui/Pagination';
-import { useFavorites } from '@/hooks/useFavorites';
+import { useReadingStatus, ReadingStatus, READING_STATUS_LABELS } from '@/hooks/useReadingStatus';
 
 export default function HomePage() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [tags, setTags] = useState<TagWithCount[]>([]);
+  const [years, setYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,9 +23,10 @@ export default function HomePage() {
   });
   const [totalPages, setTotalPages] = useState(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<ReadingStatus | 'all'>('all');
+  const [sortBy, setSortBy] = useState<string>('updated_desc');
 
-  const { isFavorite, toggleFavorite, getFavoriteIds, isLoaded } = useFavorites();
+  const { getStatus, setStatus, isFavorite, toggleFavorite, isLoaded } = useReadingStatus();
 
   const fetchPapers = useCallback(async () => {
     try {
@@ -49,6 +51,15 @@ export default function HomePage() {
     }
   }, []);
 
+  const fetchYears = useCallback(async () => {
+    try {
+      const response = await papersApi.getYears();
+      setYears(response);
+    } catch (err) {
+      console.error('Failed to fetch years:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPapers();
   }, [fetchPapers]);
@@ -56,6 +67,10 @@ export default function HomePage() {
   useEffect(() => {
     fetchTags();
   }, [fetchTags]);
+
+  useEffect(() => {
+    fetchYears();
+  }, [fetchYears]);
 
   const handleSearchChange = (search: string) => {
     setFilters((prev) => ({ ...prev, search: search || undefined, page: 1 }));
@@ -70,6 +85,10 @@ export default function HomePage() {
     setFilters((prev) => ({ ...prev, page: 1 }));
   };
 
+  const handleYearChange = (year: number | undefined) => {
+    setFilters((prev) => ({ ...prev, year, page: 1 }));
+  };
+
   const handlePageChange = (page: number) => {
     setFilters((prev) => ({ ...prev, page }));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -80,6 +99,34 @@ export default function HomePage() {
       handleTagsChange([...selectedTags, tagName]);
     }
   };
+
+  const sortedPapers = useMemo(() => {
+    const sorted = [...papers];
+    switch (sortBy) {
+      case 'published_desc':
+        return sorted.sort((a, b) =>
+          (b.published_at || '').localeCompare(a.published_at || '')
+        );
+      case 'published_asc':
+        return sorted.sort((a, b) =>
+          (a.published_at || '').localeCompare(b.published_at || '')
+        );
+      case 'updated_desc':
+        return sorted.sort((a, b) =>
+          b.updated_at.localeCompare(a.updated_at)
+        );
+      case 'updated_asc':
+        return sorted.sort((a, b) =>
+          a.updated_at.localeCompare(b.updated_at)
+        );
+      case 'title_asc':
+        return sorted.sort((a, b) =>
+          a.title.localeCompare(b.title)
+        );
+      default:
+        return sorted;
+    }
+  }, [papers, sortBy]);
 
   return (
     <div className="space-y-6">
@@ -114,21 +161,42 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showFavoritesOnly}
-                onChange={(e) => setShowFavoritesOnly(e.target.checked)}
-                className="w-4 h-4 text-yellow-500 rounded focus:ring-yellow-500"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                Favorites only
-              </span>
-            </label>
+          <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as ReadingStatus | 'all')}
+              className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Status</option>
+              <option value="favorite">⭐ {READING_STATUS_LABELS.favorite}</option>
+              <option value="to_read">📋 {READING_STATUS_LABELS.to_read}</option>
+              <option value="read">✅ {READING_STATUS_LABELS.read}</option>
+            </select>
+
+            <select
+              value={filters.year || ''}
+              onChange={(e) => handleYearChange(e.target.value ? Number(e.target.value) : undefined)}
+              className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Years</option>
+              {years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="updated_desc">Updated (Newest)</option>
+              <option value="updated_asc">Updated (Oldest)</option>
+              <option value="published_desc">Published (Newest)</option>
+              <option value="published_asc">Published (Oldest)</option>
+              <option value="title_asc">Title (A-Z)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -148,20 +216,20 @@ export default function HomePage() {
       ) : (
         <>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {papers
-              .filter((paper) => !showFavoritesOnly || isFavorite(paper.id))
+            {sortedPapers
+              .filter((paper) => statusFilter === 'all' || getStatus(paper.id) === statusFilter)
               .map((paper) => (
                 <PaperCard
                   key={paper.id}
                   paper={paper}
                   onTagClick={handleTagClick}
-                  isFavorite={isFavorite(paper.id)}
-                  onToggleFavorite={toggleFavorite}
+                  readingStatus={getStatus(paper.id)}
+                  onStatusChange={(status) => setStatus(paper.id, status)}
                 />
               ))}
           </div>
 
-          {!showFavoritesOnly && (
+          {statusFilter === 'all' && (
             <Pagination
               currentPage={filters.page || 1}
               totalPages={totalPages}
