@@ -21,36 +21,65 @@ export function PdfUploader() {
   const [extracting, setExtracting] = useState(false);
   const [metadataSource, setMetadataSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const processFile = async (selectedFile: File) => {
+    if (selectedFile.type !== 'application/pdf' && !selectedFile.name.toLowerCase().endsWith('.pdf')) {
+      setError('Please select a PDF file');
+      return;
+    }
+    setFile(selectedFile);
+    setError(null);
+
+    // Auto-extract metadata
+    setExtracting(true);
+    setMetadataSource(null);
+    try {
+      const metadata = await papersApi.extractPdfMetadata(selectedFile);
+      setTitle(metadata.title);
+      if (metadata.authors.length > 0) {
+        setAuthors(metadata.authors.join(', '));
+      }
+      if (metadata.abstract) {
+        setAbstract(metadata.abstract);
+      }
+      if (metadata.year) {
+        setYear(metadata.year);
+      }
+      setMetadataSource(metadata.source);
+    } catch {
+      // Silently fail - user can still fill in manually
+    } finally {
+      setExtracting(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      setFile(selectedFile);
-      setError(null);
+    if (selectedFile) {
+      await processFile(selectedFile);
+    }
+  };
 
-      // Auto-extract metadata
-      setExtracting(true);
-      setMetadataSource(null);
-      try {
-        const metadata = await papersApi.extractPdfMetadata(selectedFile);
-        setTitle(metadata.title);
-        if (metadata.authors.length > 0) {
-          setAuthors(metadata.authors.join(', '));
-        }
-        if (metadata.abstract) {
-          setAbstract(metadata.abstract);
-        }
-        if (metadata.year) {
-          setYear(metadata.year);
-        }
-        setMetadataSource(metadata.source);
-      } catch {
-        // Silently fail - user can still fill in manually
-      } finally {
-        setExtracting(false);
-      }
-    } else if (selectedFile) {
-      setError('Please select a PDF file');
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      await processFile(droppedFile);
     }
   };
 
@@ -110,10 +139,15 @@ export function PdfUploader() {
         </label>
         <div
           onClick={() => fileInputRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-            file
-              ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-              : 'border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400'
+            dragOver
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+              : file
+                ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                : 'border-gray-300 dark:border-gray-600 hover:border-blue-500 dark:hover:border-blue-400'
           }`}
         >
           <input

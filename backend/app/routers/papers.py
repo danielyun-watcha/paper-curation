@@ -1130,6 +1130,30 @@ UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _extract_doi_from_text(text: str) -> Optional[str]:
+    """Try to extract a DOI from text (e.g. URL containing doi.org or 10.xxxx pattern)"""
+    import re
+    # Match DOI pattern: 10.xxxx/xxxxx
+    match = re.search(r'(10\.\d{4,}/[^\s,]+)', text)
+    if match:
+        return match.group(1).rstrip('.')
+    return None
+
+
+def _ss_paper_to_response(ss_paper) -> PdfMetadataResponse:
+    return PdfMetadataResponse(
+        title=ss_paper.title,
+        authors=ss_paper.authors,
+        abstract=ss_paper.abstract,
+        year=ss_paper.year,
+        url=ss_paper.url,
+        doi=ss_paper.doi,
+        arxiv_id=ss_paper.arxiv_id,
+        citation_count=ss_paper.citation_count,
+        source="semantic_scholar",
+    )
+
+
 @router.post("/extract-pdf-metadata", response_model=PdfMetadataResponse)
 async def extract_pdf_metadata(
     pdf: UploadFile = File(...),
@@ -1148,22 +1172,25 @@ async def extract_pdf_metadata(
         # Fallback to filename
         extracted_title = pdf.filename.replace('.pdf', '').replace('_', ' ').replace('-', ' ')
 
-    # Search Semantic Scholar for full metadata
     ss_service = get_semantic_scholar_service()
+
+    # If extracted title contains a DOI, try DOI lookup first
+    doi = _extract_doi_from_text(extracted_title)
+    if doi:
+        try:
+            ss_paper = await ss_service.get_by_doi(doi)
+            if ss_paper:
+                return _ss_paper_to_response(ss_paper)
+        except SemanticScholarError:
+            pass
+        # DOI lookup failed, use filename as title instead
+        extracted_title = pdf.filename.replace('.pdf', '').replace('_', ' ').replace('-', ' ')
+
+    # Search Semantic Scholar by title
     try:
         ss_paper = await ss_service.search_by_title(extracted_title)
         if ss_paper:
-            return PdfMetadataResponse(
-                title=ss_paper.title,
-                authors=ss_paper.authors,
-                abstract=ss_paper.abstract,
-                year=ss_paper.year,
-                url=ss_paper.url,
-                doi=ss_paper.doi,
-                arxiv_id=ss_paper.arxiv_id,
-                citation_count=ss_paper.citation_count,
-                source="semantic_scholar",
-            )
+            return _ss_paper_to_response(ss_paper)
     except SemanticScholarError:
         pass  # Fall back to PDF-only data
 

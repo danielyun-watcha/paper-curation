@@ -67,16 +67,31 @@ class PdfService:
 
             lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-            # Find title: skip short lines, find first substantial line
-            for line in lines[:10]:  # Check first 10 lines
+            # Find title: skip non-title lines, find first substantial line
+            for line in lines[:15]:  # Check first 15 lines
+                lower = line.lower()
                 # Skip very short lines or lines that look like headers/page numbers
                 if len(line) < 10:
                     continue
                 # Skip lines that are likely authors (contain @, university, etc.)
-                if '@' in line or 'university' in line.lower() or 'institute' in line.lower():
+                if '@' in line or 'university' in lower or 'institute' in lower:
                     continue
                 # Skip lines that look like "arXiv:" or dates
-                if line.lower().startswith('arxiv') or line.startswith('20'):
+                if lower.startswith('arxiv') or line.startswith('20'):
+                    continue
+                # Skip lines containing URLs or DOIs
+                if 'http' in lower or 'doi.org' in lower or 'doi:' in lower or '10.' in line[:4]:
+                    continue
+                # Skip journal/publisher headers and article type labels
+                if any(kw in lower for kw in [
+                    'journal', 'proceedings', 'conference', 'transactions',
+                    'research article', 'review article', 'original article',
+                    'open access', 'vol.', 'volume', 'issn', 'isbn',
+                    'published', 'accepted', 'received', 'revised',
+                    'latest update', 'copyright', 'license', 'creative commons',
+                    'springer', 'elsevier', 'wiley', 'ieee', 'acm',
+                    'preprint', 'submitted',
+                ]):
                     continue
                 # This is likely the title
                 return line
