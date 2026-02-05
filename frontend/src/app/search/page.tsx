@@ -389,7 +389,7 @@ export default function SearchPage() {
                     No papers found
                   </div>
                 ) : (
-                  <ul className="divide-y divide-gray-200 dark:divide-gray-700 overflow-y-auto flex-1">
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-700 flex-1">
                     {results.map((result, index) => (
                       <li key={index} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                         <div className="space-y-2">
@@ -470,7 +470,7 @@ export default function SearchPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-h-0">
                   <ConnectedPapersGraph
                     sourceTitle={connectedSourceTitle}
                     sourceYear={connectedSourceYear}

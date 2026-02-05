@@ -113,7 +113,17 @@ class SemanticScholarService:
         """Get recommended papers using Semantic Scholar Recommendations API.
 
         paper_id can be: "ArXiv:{arxiv_id}", "DOI:{doi}", or a Semantic Scholar paper ID.
+        Uses cache to avoid redundant API calls.
         """
+        from app.services.cache_service import get_cache_service
+        cache = get_cache_service()
+
+        # Check cache first
+        cache_key = f"recommendations:{paper_id}:{limit}"
+        cached = cache.get(cache_key)
+        if cached:
+            return [SemanticScholarPaper(**paper) for paper in cached]
+
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(
@@ -150,6 +160,15 @@ class SemanticScholarService:
                         arxiv_id=external_ids.get("ArXiv"),
                         citation_count=paper.get("citationCount", 0),
                     ))
+
+                # Store in cache
+                cache.set(cache_key, [
+                    {
+                        "title": p.title, "authors": p.authors, "abstract": p.abstract,
+                        "year": p.year, "url": p.url, "doi": p.doi,
+                        "arxiv_id": p.arxiv_id, "citation_count": p.citation_count,
+                    } for p in results
+                ])
 
                 return results
 

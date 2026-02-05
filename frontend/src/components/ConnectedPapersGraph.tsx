@@ -51,32 +51,40 @@ export default function ConnectedPapersGraph({
 }: ConnectedPapersGraphProps) {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+  const [dimensions, setDimensions] = useState({ width: 500, height: 450 });
 
   // Update dimensions on mount and resize
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
-        const width = containerRef.current.offsetWidth;
-        const height = Math.min(500, Math.max(400, width * 0.7));
-        setDimensions({ width, height });
+        const rect = containerRef.current.getBoundingClientRect();
+        const width = rect.width || 500;
+        const height = 450; // Fixed height
+        if (width > 0) {
+          setDimensions({ width, height });
+        }
       }
     };
 
-    // Initial update with a slight delay to allow layout to settle
-    const timer = setTimeout(updateDimensions, 100);
+    // Initial update
+    updateDimensions();
+
+    // Retry with delays
+    const timer1 = setTimeout(updateDimensions, 100);
+    const timer2 = setTimeout(updateDimensions, 300);
+
     window.addEventListener('resize', updateDimensions);
     return () => {
-      clearTimeout(timer);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       window.removeEventListener('resize', updateDimensions);
     };
   }, [connectedPapers]);
 
   // Build graph data with circular layout - stable and reliable
   useEffect(() => {
-    const centerX = dimensions.width / 2;
-    const centerY = dimensions.height / 2;
-    const baseRadius = Math.min(dimensions.width, dimensions.height) * 0.32;
+    // react-force-graph-2d uses (0,0) as canvas center
+    const baseRadius = Math.min(dimensions.width, dimensions.height) * 0.17;
 
     const nodes: Node[] = [
       {
@@ -85,10 +93,10 @@ export default function ConnectedPapersGraph({
         year: sourceYear || null,
         citations: sourceCitations,
         isCenter: true,
-        x: centerX,
-        y: centerY,
-        fx: centerX,
-        fy: centerY,
+        x: 0,
+        y: 0,
+        fx: 0,
+        fy: 0,
       },
     ];
 
@@ -97,10 +105,10 @@ export default function ConnectedPapersGraph({
     connectedPapers.forEach((paper, index) => {
       const nodeId = `paper-${index}`;
 
-      // Perfect circular arrangement - all at same distance
+      // Perfect circular arrangement - all at same distance from center (0,0)
       const angle = (index / connectedPapers.length) * 2 * Math.PI - Math.PI / 2;
-      const x = centerX + baseRadius * Math.cos(angle);
-      const y = centerY + baseRadius * Math.sin(angle);
+      const x = baseRadius * Math.cos(angle);
+      const y = baseRadius * Math.sin(angle);
 
       nodes.push({
         id: nodeId,
@@ -177,11 +185,11 @@ export default function ConnectedPapersGraph({
 
   // Size based on citations - significant variation
   const getNodeSize = (citations: number, isCenter: boolean) => {
-    if (isCenter) return 14; // Larger center node
+    if (isCenter) return 10; // Center node
 
     // Clear variation based on citations
-    const minSize = 6;
-    const maxSize = 12;
+    const minSize = 4;
+    const maxSize = 9;
     const logCitations = Math.log(citations + 1);
     const maxLogCitations = Math.log(5000); // Assume max ~5k citations
 
@@ -189,12 +197,22 @@ export default function ConnectedPapersGraph({
   };
 
   return (
-    <div ref={containerRef} className="w-full bg-white dark:bg-gray-900 rounded-lg overflow-hidden relative">
-      <ForceGraph2D
-        graphData={graphData}
-        width={dimensions.width}
-        height={dimensions.height}
-        nodeColor={(node: any) => {
+    <div ref={containerRef} className="w-full h-full bg-white dark:bg-gray-900 overflow-hidden">
+      {connectedPapers.length === 0 ? (
+        <div className="flex items-center justify-center h-full p-8 text-gray-500">
+          No graph data available
+        </div>
+      ) : graphData.nodes.length === 0 ? (
+        <div className="flex items-center justify-center h-full p-8 text-gray-500">
+          Loading graph...
+        </div>
+      ) : (
+        <ForceGraph2D
+          graphData={graphData}
+          width={dimensions.width}
+          height={dimensions.height}
+          backgroundColor="rgba(255,255,255,0)"
+          nodeColor={(node: any) => {
           const n = node as Node;
           return getNodeColor(n.year, n.isCenter);
         }}
@@ -278,11 +296,9 @@ export default function ConnectedPapersGraph({
 
           // Draw index number outside node (for non-center nodes)
           if (!n.isCenter && n.index !== undefined) {
-            const fontSize = 14;
-            // Calculate angle from center to position label radially
-            const centerX = dimensions.width / 2;
-            const centerY = dimensions.height / 2;
-            const angle = Math.atan2(node.y! - centerY, node.x! - centerX);
+            const fontSize = 10;
+            // Calculate angle from center (0,0) to position label radially
+            const angle = Math.atan2(node.y!, node.x!);
             const labelDistance = size + 16;
             const labelX = node.x! + Math.cos(angle) * labelDistance;
             const labelY = node.y! + Math.sin(angle) * labelDistance;
@@ -307,9 +323,10 @@ export default function ConnectedPapersGraph({
           return `${n.name}${n.year ? ` (${n.year})` : ''}${n.citations > 0 ? ` - ${n.citations.toLocaleString()} citations` : ''}`;
         }}
         enableNodeDrag={false}
-        enableZoomInteraction={true}
-        enablePanInteraction={true}
+        enableZoomInteraction={false}
+        enablePanInteraction={false}
       />
+      )}
 
       {/* Legend */}
       <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-r from-white to-gray-50 dark:from-gray-800 dark:to-gray-700">
