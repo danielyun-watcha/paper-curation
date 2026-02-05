@@ -138,7 +138,7 @@ async def get_related_papers(paper_id: str):
 
     ss_service = get_semantic_scholar_service()
     try:
-        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=5)
+        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=10)
 
         return RelatedPapersResponse(
             paper_id=paper_id,
@@ -198,7 +198,7 @@ async def get_related_papers_external(
 
     ss_service = get_semantic_scholar_service()
     try:
-        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=5)
+        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=10)
 
         return RelatedPapersResponse(
             paper_id="external",

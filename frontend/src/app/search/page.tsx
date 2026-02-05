@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ScholarSearchResult, RelatedPaperResult } from '@/types';
 import { papersApi } from '@/lib/api';
+import ConnectedPapersGraph from '@/components/ConnectedPapersGraph';
 
 // Extract arxiv ID from URL
 function extractArxivId(url: string): string | null {
@@ -35,6 +36,8 @@ export default function SearchPage() {
   const [connectingIndex, setConnectingIndex] = useState<number | null>(null);
   const [connectedResults, setConnectedResults] = useState<RelatedPaperResult[]>([]);
   const [connectedSourceTitle, setConnectedSourceTitle] = useState('');
+  const [connectedSourceYear, setConnectedSourceYear] = useState<number | undefined>(undefined);
+  const [connectedSourceCitations, setConnectedSourceCitations] = useState<number>(0);
   const [hasConnected, setHasConnected] = useState(false);
 
   // Handle URL query params: ?connect={id} → auto-show connected papers
@@ -60,6 +63,10 @@ export default function SearchPage() {
     setError(null);
     setHasSearched(true);
     setAddedIndices(new Set());
+    // Clear connected papers when new search is performed
+    setHasConnected(false);
+    setConnectedResults([]);
+    setConnectedSourceTitle('');
     try {
       const response = await papersApi.searchScholar(query.trim(), 5);
       setResults(response.results);
@@ -79,7 +86,10 @@ export default function SearchPage() {
   };
 
   // Connect: find related papers for a search result or connected result
-  const handleConnect = async (index: number, params: { arxiv_id?: string; doi?: string; title?: string }) => {
+  const handleConnect = async (
+    index: number,
+    params: { arxiv_id?: string; doi?: string; title?: string; year?: number; citations?: number }
+  ) => {
     setConnectingIndex(index);
     try {
       const response = await papersApi.getRelatedPapersExternal({
@@ -89,6 +99,8 @@ export default function SearchPage() {
       });
       setConnectedResults(response.results);
       setConnectedSourceTitle(params.title || '');
+      setConnectedSourceYear(params.year);
+      setConnectedSourceCitations(params.citations || 0);
       setHasConnected(true);
       setAddedIndices(new Set());
     } catch (err) {
@@ -102,12 +114,24 @@ export default function SearchPage() {
   const handleConnectScholar = (index: number, result: ScholarSearchResult) => {
     const arxivId = extractArxivId(result.url || '') || extractArxivId(result.pub_url || '');
     const doi = extractDoi(result.url || '') || extractDoi(result.pub_url || '');
-    handleConnect(index, { arxiv_id: arxivId || undefined, doi: doi || undefined, title: result.title });
+    handleConnect(index, {
+      arxiv_id: arxivId || undefined,
+      doi: doi || undefined,
+      title: result.title,
+      year: result.year || undefined,
+      citations: result.cited_by,
+    });
   };
 
   // Connect from Connected result (chain)
   const handleConnectChain = (index: number, result: RelatedPaperResult) => {
-    handleConnect(index, { arxiv_id: result.arxiv_id || undefined, doi: result.doi || undefined, title: result.title });
+    handleConnect(index, {
+      arxiv_id: result.arxiv_id || undefined,
+      doi: result.doi || undefined,
+      title: result.title,
+      year: result.year || undefined,
+      citations: result.cited_by,
+    });
   };
 
   // Add paper from Scholar result
@@ -278,127 +302,196 @@ export default function SearchPage() {
         Similar Paper Search
       </h1>
 
-      <div className={hasConnected ? "grid grid-cols-1 lg:grid-cols-2 gap-6 items-start" : ""}>
-        {/* Left column: Search + Results */}
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Enter paper title or abstract to find similar papers
-                </label>
-                <textarea
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Paste a paper title, abstract, or describe the topic you're looking for..."
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              <button
-                onClick={handleSearch}
-                disabled={!query.trim() || searching}
-                className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700
-                         disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors
-                         flex items-center justify-center gap-2"
-              >
-                {searching ? (
-                  <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Searching Google Scholar...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 24a7 7 0 1 1 0-14 7 7 0 0 1 0 14zm0-24L0 9.5l4.838 3.94A8 8 0 0 1 12 9a8 8 0 0 1 7.162 4.44L24 9.5 12 0z" />
-                    </svg>
-                    Find Similar Papers
-                  </>
-                )}
-              </button>
-            </div>
+      {/* Search Box - Always at top, full width */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Enter paper title or abstract to find similar papers
+            </label>
+            <textarea
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Paste a paper title, abstract, or describe the topic you're looking for..."
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-              <p className="text-red-700 dark:text-red-300">{error}</p>
-            </div>
-          )}
-
-          {/* Scholar results */}
-          {hasSearched && !searching && !error && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="font-semibold text-gray-900 dark:text-white">
-                  Google Scholar Results
-                  {results.length > 0 && (
-                    <span className="ml-2 text-sm font-normal text-gray-500">
-                      ({results.length} papers found, sorted by relevance)
-                    </span>
-                  )}
-                </h2>
-              </div>
-
-              {results.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                  No similar papers found. Try a different query.
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {results.map((result, index) =>
-                    renderResultCard(
-                      index,
-                      result.title,
-                      result.url,
-                      result.authors,
-                      result.year,
-                      result.abstract,
-                      result.cited_by,
-                      result.pub_url,
-                      () => handleAddScholar(index, result),
-                      () => handleConnectScholar(index, result),
-                    )
-                  )}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* Info box */}
-          {!hasSearched && !hasConnected && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <p className="text-blue-800 dark:text-blue-200 text-sm">
-                <strong>Tip:</strong> Enter a paper title, abstract, or topic description to find related papers from Google Scholar.
-                Results are sorted by relevance. You can add papers directly to your collection, or click Connect to find related papers.
-              </p>
-            </div>
-          )}
+          <button
+            onClick={handleSearch}
+            disabled={!query.trim() || searching}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700
+                     disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors
+                     flex items-center justify-center gap-2"
+          >
+            {searching ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Searching Google Scholar...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 24a7 7 0 1 1 0-14 7 7 0 0 1 0 14zm0-24L0 9.5l4.838 3.94A8 8 0 0 1 12 9a8 8 0 0 1 7.162 4.44L24 9.5 12 0z" />
+                </svg>
+                Find Similar Papers
+              </>
+            )}
+          </button>
         </div>
+      </div>
 
-        {/* Right column: Connected Papers */}
-        {hasConnected && (
-          <div className="lg:sticky lg:top-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-purple-200 dark:border-purple-800">
-              <div className="p-4 border-b border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
-                <h2 className="font-semibold text-purple-800 dark:text-purple-200 flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                  Connected Papers
-                </h2>
-                {connectedSourceTitle && (
-                  <p className="text-sm text-purple-600 dark:text-purple-400 mt-1 truncate">
-                    for &ldquo;{connectedSourceTitle}&rdquo;
-                  </p>
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <p className="text-red-700 dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {/* Info box */}
+      {!hasSearched && !hasConnected && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <p className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Tip:</strong> Enter a paper title, abstract, or topic description to find related papers from Google Scholar.
+            Results are sorted by relevance. You can add papers directly to your collection, or click Connect to find related papers.
+          </p>
+        </div>
+      )}
+
+      {/* Two different layouts based on whether graph is shown */}
+      {hasConnected ? (
+        /* Layout with graph: 3-column grid - Scholar left, Graph center, Paper Details right */
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Left column: Scholar results (compact, 2 columns) */}
+          {hasSearched && !searching && !error && (
+            <div className="lg:col-span-2">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden h-[600px] flex flex-col">
+                <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Scholar Results
+                    {results.length > 0 && (
+                      <span className="block text-xs font-normal text-gray-500 mt-0.5">
+                        {results.length} papers
+                      </span>
+                    )}
+                  </h2>
+                </div>
+
+                {results.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No papers found
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-700 overflow-y-auto flex-1">
+                    {results.map((result, index) => (
+                      <li key={index} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0">
+                              #{index + 1}
+                            </span>
+                            <h3 className="text-xs font-medium text-gray-900 dark:text-white leading-tight line-clamp-2">
+                              {result.url ? (
+                                <a href={result.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 dark:hover:text-blue-400">
+                                  {result.title}
+                                </a>
+                              ) : result.title}
+                            </h3>
+                          </div>
+
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {result.authors.slice(0, 2).join(', ')}
+                            {result.authors.length > 2 && ` +${result.authors.length - 2}`}
+                            {result.year && ` · ${result.year}`}
+                          </p>
+
+                          <div className="flex gap-1.5">
+                            {addedIndices.has(index) ? (
+                              <span className="inline-flex items-center gap-0.5 text-xs text-green-600 dark:text-green-400">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Added
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleAddScholar(index, result)}
+                                  disabled={addingIndex === index}
+                                  className="text-xs px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  {addingIndex === index ? 'Adding...' : 'Add'}
+                                </button>
+                                <button
+                                  onClick={() => handleConnectScholar(index, result)}
+                                  disabled={connectingIndex === index}
+                                  className="text-xs px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                                >
+                                  {connectingIndex === index ? 'Connecting...' : 'Connect'}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Middle column: Graph (5 columns) */}
+          <div className={`${hasSearched && !searching && !error ? 'lg:col-span-5' : 'lg:col-span-7'}`}>
+            {connectedResults.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-purple-200 dark:border-purple-800 h-[600px] flex flex-col">
+                <div className="p-3 border-b border-purple-200 dark:border-purple-700 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 flex-shrink-0">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-semibold text-purple-800 dark:text-purple-200 text-xs mb-1">
+                        Connected Papers Graph
+                      </h2>
+                      {connectedSourceTitle && (
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug line-clamp-2">
+                          &ldquo;{connectedSourceTitle}&rdquo;
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto">
+                  <ConnectedPapersGraph
+                    sourceTitle={connectedSourceTitle}
+                    sourceYear={connectedSourceYear}
+                    sourceCitations={connectedSourceCitations}
+                    connectedPapers={connectedResults}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right column: Paper Details (5 columns) */}
+          <div className={`${hasSearched && !searching && !error ? 'lg:col-span-5' : 'lg:col-span-5'}`}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-purple-200 dark:border-purple-800 h-[600px] flex flex-col">
+              <div className="p-3 border-b border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 flex-shrink-0">
+                <h2 className="text-sm font-semibold text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  Paper Details
+                </h2>
               </div>
 
               {connectedResults.length === 0 ? (
@@ -406,7 +499,7 @@ export default function SearchPage() {
                   No connected papers found.
                 </div>
               ) : (
-                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                <ul className="divide-y divide-gray-200 dark:divide-gray-700 overflow-y-auto flex-1">
                   {connectedResults.map((result, index) => {
                     const paperUrl = result.url
                       || (result.arxiv_id ? `https://arxiv.org/abs/${result.arxiv_id}` : null)
@@ -430,8 +523,47 @@ export default function SearchPage() {
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        /* Layout without graph: Normal full-width Scholar results */
+        hasSearched && !searching && !error && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="font-semibold text-gray-900 dark:text-white">
+                Google Scholar Results
+                {results.length > 0 && (
+                  <span className="ml-2 text-sm font-normal text-gray-500">
+                    ({results.length} papers found, sorted by relevance)
+                  </span>
+                )}
+              </h2>
+            </div>
+
+            {results.length === 0 ? (
+              <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+                No similar papers found. Try a different query.
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {results.map((result, index) =>
+                  renderResultCard(
+                    index,
+                    result.title,
+                    result.url,
+                    result.authors,
+                    result.year,
+                    result.abstract,
+                    result.cited_by,
+                    result.pub_url,
+                    () => handleAddScholar(index, result),
+                    () => handleConnectScholar(index, result),
+                  )
+                )}
+              </ul>
+            )}
+          </div>
+        )
+      )}
     </div>
   );
 }

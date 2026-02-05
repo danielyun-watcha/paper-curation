@@ -83,14 +83,24 @@ class ScholarService:
         return results
 
     async def search(self, query: str, limit: int = 5) -> List[ScholarResult]:
-        """Search Google Scholar asynchronously"""
+        """Search Google Scholar asynchronously with timeout"""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self._executor,
-            self._search_sync,
-            query,
-            limit
-        )
+        try:
+            # Add 30 second timeout to prevent hanging
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    self._executor,
+                    self._search_sync,
+                    query,
+                    limit
+                ),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            raise ScholarServiceError(
+                "Google Scholar search timed out. Google may be blocking requests. "
+                "Please try again in a few minutes or use a VPN."
+            )
 
 
 # Singleton instance

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import List, Optional
 import httpx
@@ -33,6 +34,13 @@ class SemanticScholarService:
 
     BASE_URL = "https://api.semanticscholar.org/graph/v1"
 
+    def _get_headers(self) -> dict:
+        """Get headers with API key if available"""
+        api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+        if api_key:
+            return {"x-api-key": api_key}
+        return {}
+
     async def search_by_title(self, title: str) -> Optional[SemanticScholarPaper]:
         """Search for a paper by title and return the best match"""
         try:
@@ -44,7 +52,8 @@ class SemanticScholarService:
                         "query": title,
                         "limit": 1,
                         "fields": "title,authors,abstract,year,url,externalIds"
-                    }
+                    },
+                    headers=self._get_headers()
                 )
 
                 if response.status_code == 429:
@@ -82,6 +91,24 @@ class SemanticScholarService:
         except Exception as e:
             raise SemanticScholarError(f"Failed to fetch from Semantic Scholar: {str(e)}")
 
+    async def get_paper_references(self, paper_id: str) -> List[str]:
+        """Get paper IDs that this paper references"""
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"{self.BASE_URL}/paper/{paper_id}",
+                    params={"fields": "references.paperId"},
+                    headers=self._get_headers()
+                )
+                if response.status_code == 404:
+                    return []
+                response.raise_for_status()
+                data = response.json()
+                refs = data.get("references", [])
+                return [ref.get("paperId") for ref in refs if ref.get("paperId")]
+        except Exception:
+            return []
+
     async def get_recommendations(self, paper_id: str, limit: int = 5) -> List[SemanticScholarPaper]:
         """Get recommended papers using Semantic Scholar Recommendations API.
 
@@ -96,6 +123,7 @@ class SemanticScholarService:
                         "fields": "title,authors,abstract,year,url,externalIds,citationCount",
                         "from": "all-cs",
                     },
+                    headers=self._get_headers()
                 )
 
                 if response.status_code == 404:
@@ -141,7 +169,8 @@ class SemanticScholarService:
                     f"{self.BASE_URL}/paper/DOI:{doi}",
                     params={
                         "fields": "title,authors,abstract,year,url,externalIds"
-                    }
+                    },
+                    headers=self._get_headers()
                 )
 
                 if response.status_code == 404:
