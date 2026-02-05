@@ -18,6 +18,7 @@ class DoiPaperData:
     source: str  # "acm", "ieee", "other"
     published_at: Optional[str] = None  # ISO date string
     conference: Optional[str] = None  # Conference abbreviation (e.g., KDD, WWW)
+    arxiv_id: Optional[str] = None  # arXiv ID if available
 
 
 class DoiServiceError(Exception):
@@ -73,7 +74,7 @@ class DoiService:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self.SEMANTIC_SCHOLAR_API}{doi}",
-                params={"fields": "title,authors,abstract,year,publicationDate,venue,publicationVenue"},
+                params={"fields": "title,authors,abstract,year,publicationDate,venue,publicationVenue,externalIds"},
             )
 
             if response.status_code == 404:
@@ -96,6 +97,10 @@ class DoiService:
             else:
                 paper_url = url
 
+            # Extract arXiv ID from externalIds
+            external_ids = data.get("externalIds") or {}
+            arxiv_id = external_ids.get("ArXiv")
+
             return DoiPaperData(
                 title=data.get("title", ""),
                 authors=authors,
@@ -106,6 +111,7 @@ class DoiService:
                 source=source,
                 published_at=data.get("publicationDate"),  # "2025-09-07" format
                 conference=conference,
+                arxiv_id=arxiv_id,
             )
 
     def _extract_conference(self, data: dict) -> Optional[str]:
@@ -130,7 +136,7 @@ class DoiService:
 
         # Fall back to venue string
         venue = data.get("venue")
-        if venue:
+        if venue and venue.lower() not in ("arxiv", "arxiv.org"):
             return f"{venue}{year_suffix}"
 
         return None

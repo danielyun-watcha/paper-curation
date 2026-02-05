@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import List, Optional
 
 import httpx
 from defusedxml import ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -127,11 +130,12 @@ class ArxivService:
 
             # Fall back to venue string
             venue = data.get("venue")
-            if venue:
+            if venue and venue.lower() not in ("arxiv", "arxiv.org"):
                 return f"{venue}{year_suffix}"
 
             return None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch conference for arXiv:{arxiv_id}: {e}")
             return None
 
     def _parse_response(self, xml_content: str, arxiv_id: str) -> ArxivPaperData:

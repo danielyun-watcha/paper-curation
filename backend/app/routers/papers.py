@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 import os
 import shutil
+import httpx
 
 from app.database import load_data, save_data, generate_id, now_iso
 from app.models.paper import Category
@@ -25,6 +26,11 @@ from app.schemas import (
     PreviewItem,
     PreviewImportResponse,
     BulkImportWithCategoriesRequest,
+    ScholarSearchResult,
+    ScholarSearchResponse,
+    ScholarAddRequest,
+    RelatedPaperResult,
+    RelatedPapersResponse,
 )
 from app.services.arxiv_service import (
     get_arxiv_service,
@@ -44,6 +50,14 @@ from app.services.pdf_service import (
     get_pdf_service,
     PdfServiceError,
 )
+from app.services.scholar_service import (
+    get_scholar_service,
+    ScholarServiceError,
+)
+from app.services.semantic_scholar_service import (
+    get_semantic_scholar_service,
+    SemanticScholarError,
+)
 
 router = APIRouter()
 
@@ -56,12 +70,262 @@ async def get_available_years():
     return years
 
 
+@router.get("/search-scholar", response_model=ScholarSearchResponse)
+async def search_scholar(
+    query: str = Query(..., description="Search query for Google Scholar"),
+    limit: int = Query(5, ge=1, le=10, description="Number of results to return"),
+):
+    """Search Google Scholar for papers and return top results sorted by relevance"""
+    scholar_service = get_scholar_service()
+
+    try:
+        results = await scholar_service.search(query, limit)
+
+        return ScholarSearchResponse(
+            query=query,
+            results=[
+                ScholarSearchResult(
+                    title=r.title,
+                    authors=r.authors,
+                    abstract=r.abstract,
+                    year=r.year,
+                    url=r.url,
+                    cited_by=r.cited_by,
+                    pub_url=r.pub_url,
+                )
+                for r in results
+            ]
+        )
+    except ScholarServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/related/{paper_id}", response_model=RelatedPapersResponse)
+async def get_related_papers(paper_id: str):
+    """Find related papers for a paper in the collection using Semantic Scholar Recommendations API"""
+    data = load_data()
+    paper = next((p for p in data["papers"] if p["id"] == paper_id), None)
+
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    # Build Semantic Scholar paper identifier (priority: arxiv_id > doi > title search)
+    ss_paper_id = None
+
+    if paper.get("arxiv_id"):
+        ss_paper_id = f"ArXiv:{paper['arxiv_id']}"
+    elif paper.get("doi"):
+        ss_paper_id = f"DOI:{paper['doi']}"
+    else:
+        ss_service = get_semantic_scholar_service()
+        try:
+            ss_paper = await ss_service.search_by_title(paper["title"])
+            if ss_paper:
+                if ss_paper.arxiv_id:
+                    ss_paper_id = f"ArXiv:{ss_paper.arxiv_id}"
+                elif ss_paper.doi:
+                    ss_paper_id = f"DOI:{ss_paper.doi}"
+                elif ss_paper.ss_id:
+                    ss_paper_id = ss_paper.ss_id
+        except SemanticScholarError:
+            pass
+
+    if not ss_paper_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot find this paper in Semantic Scholar. The paper needs an arXiv ID or DOI to find related papers.",
+        )
+
+    ss_service = get_semantic_scholar_service()
+    try:
+        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=5)
+
+        return RelatedPapersResponse(
+            paper_id=paper_id,
+            paper_title=paper["title"],
+            results=[
+                RelatedPaperResult(
+                    title=r.title,
+                    authors=r.authors,
+                    abstract=r.abstract,
+                    year=r.year,
+                    url=r.url,
+                    cited_by=r.citation_count,
+                    arxiv_id=r.arxiv_id,
+                    doi=r.doi,
+                )
+                for r in recommendations
+            ],
+        )
+    except SemanticScholarError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.get("/related-external", response_model=RelatedPapersResponse)
+async def get_related_papers_external(
+    arxiv_id: Optional[str] = Query(None),
+    doi: Optional[str] = Query(None),
+    title: Optional[str] = Query(None),
+):
+    """Find related papers for an external paper (not in collection) using Semantic Scholar"""
+    ss_paper_id = None
+
+    if arxiv_id:
+        ss_paper_id = f"ArXiv:{arxiv_id}"
+    elif doi:
+        ss_paper_id = f"DOI:{doi}"
+    elif title:
+        ss_service = get_semantic_scholar_service()
+        try:
+            ss_paper = await ss_service.search_by_title(title)
+            if ss_paper:
+                if ss_paper.arxiv_id:
+                    ss_paper_id = f"ArXiv:{ss_paper.arxiv_id}"
+                elif ss_paper.doi:
+                    ss_paper_id = f"DOI:{ss_paper.doi}"
+                elif ss_paper.ss_id:
+                    ss_paper_id = ss_paper.ss_id
+        except SemanticScholarError:
+            pass
+    else:
+        raise HTTPException(status_code=400, detail="Provide arxiv_id, doi, or title")
+
+    if not ss_paper_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot find this paper in Semantic Scholar.",
+        )
+
+    ss_service = get_semantic_scholar_service()
+    try:
+        recommendations = await ss_service.get_recommendations(ss_paper_id, limit=5)
+
+        return RelatedPapersResponse(
+            paper_id="external",
+            paper_title=title or arxiv_id or doi or "",
+            results=[
+                RelatedPaperResult(
+                    title=r.title,
+                    authors=r.authors,
+                    abstract=r.abstract,
+                    year=r.year,
+                    url=r.url,
+                    cited_by=r.citation_count,
+                    arxiv_id=r.arxiv_id,
+                    doi=r.doi,
+                )
+                for r in recommendations
+            ],
+        )
+    except SemanticScholarError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/add-from-scholar", response_model=PaperResponse)
+async def add_from_scholar(request: ScholarAddRequest):
+    """Add a paper directly from Google Scholar search result"""
+    data = load_data()
+
+    # Check for duplicate by title (case-insensitive)
+    title_lower = request.title.lower()
+    if any(p["title"].lower() == title_lower for p in data["papers"]):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Paper with title '{request.title}' already exists",
+        )
+
+    # Try to fetch full info from arXiv if URL is arXiv
+    url = request.url or ""
+    title = request.title
+    authors = request.authors
+    abstract = request.abstract or ""
+    year = request.year
+    arxiv_id = None
+    arxiv_url = None
+    doi = None
+    published_at = None
+
+    if "arxiv.org" in url.lower():
+        try:
+            arxiv_service = get_arxiv_service()
+            paper_data = await arxiv_service.fetch_paper(url)
+            # Use full data from arXiv
+            title = paper_data.title
+            authors = paper_data.authors
+            abstract = paper_data.abstract
+            year = paper_data.year
+            arxiv_id = paper_data.arxiv_id
+            arxiv_url = paper_data.arxiv_url
+            published_at = paper_data.published_at
+
+            # Check for duplicate by arXiv ID
+            if any(p.get("arxiv_id") == arxiv_id for p in data["papers"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Paper with arXiv ID {arxiv_id} already exists",
+                )
+        except (InvalidArxivUrlError, ArxivServiceError):
+            pass  # Fall back to Semantic Scholar
+
+    # If not arXiv or arXiv failed, try Semantic Scholar
+    if not arxiv_id:
+        try:
+            ss_service = get_semantic_scholar_service()
+            ss_paper = await ss_service.search_by_title(title)
+            if ss_paper and ss_paper.abstract:
+                # Use Semantic Scholar data if abstract is longer
+                if len(ss_paper.abstract) > len(abstract):
+                    abstract = ss_paper.abstract
+                if ss_paper.authors and len(ss_paper.authors) > len(authors):
+                    authors = ss_paper.authors
+                if ss_paper.year:
+                    year = ss_paper.year
+                if ss_paper.doi:
+                    doi = ss_paper.doi
+                if ss_paper.arxiv_id:
+                    arxiv_id = ss_paper.arxiv_id
+                    arxiv_url = f"https://arxiv.org/abs/{ss_paper.arxiv_id}"
+        except SemanticScholarError:
+            pass  # Fall back to Scholar data
+
+    # Auto-predict category and tags
+    category = predict_category(title, abstract)
+    tag_names = predict_tags(title, abstract) if abstract else []
+
+    tags = get_or_create_tags(data, tag_names)
+    now = now_iso()
+
+    paper = {
+        "id": generate_id(),
+        "title": title,
+        "authors": authors,
+        "abstract": abstract,
+        "year": year or 2024,
+        "arxiv_id": arxiv_id,
+        "arxiv_url": arxiv_url,
+        "doi": doi,
+        "paper_url": url if not arxiv_url else None,
+        "conference": None,
+        "category": category,
+        "tags": tags,
+        "published_at": published_at,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    data["papers"].append(paper)
+    save_data(data)
+
+    return paper
+
+
 # Keywords for automatic category prediction
 CATEGORY_KEYWORDS = {
     "recsys": ["recommendation", "recommender", "collaborative filtering", "matrix factorization",
                "click-through", "ctr", "user preference", "item embedding", "ranking"],
     "nlp": ["language model", "nlp", "text", "sentiment", "translation", "summarization",
-            "question answering", "named entity", "parsing", "tokeniz"],
+            "question answering", "named entity", "parsing", "tokeniz",
+            "llm", "gpt", "chatgpt", "large language", "bert", "transformer"],
     "cv": ["image", "vision", "object detection", "segmentation", "cnn", "convolutional",
            "visual", "pixel", "face recognition", "video"],
     "rl": ["reinforcement learning", "policy gradient", "q-learning", "actor-critic",
@@ -166,6 +430,48 @@ def detect_url_type(url: str) -> str:
     return "doi"
 
 
+def _build_doi_paper(paper_data, category: str, tags: list) -> dict:
+    """Build paper dict from DOI paper data (shared by bulk import endpoints)"""
+    now = now_iso()
+    return {
+        "id": generate_id(),
+        "title": paper_data.title,
+        "authors": paper_data.authors,
+        "abstract": paper_data.abstract or "",
+        "year": paper_data.year or 0,
+        "arxiv_id": paper_data.arxiv_id,
+        "arxiv_url": f"https://arxiv.org/abs/{paper_data.arxiv_id}" if paper_data.arxiv_id else None,
+        "doi": paper_data.doi,
+        "paper_url": paper_data.url,
+        "conference": paper_data.conference,
+        "category": category,
+        "tags": tags,
+        "published_at": paper_data.published_at,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _build_arxiv_paper(paper_data, category: str, tags: list) -> dict:
+    """Build paper dict from arXiv paper data (shared by bulk import endpoints)"""
+    now = now_iso()
+    return {
+        "id": generate_id(),
+        "title": paper_data.title,
+        "authors": paper_data.authors,
+        "abstract": paper_data.abstract,
+        "year": paper_data.year,
+        "arxiv_id": paper_data.arxiv_id,
+        "arxiv_url": paper_data.arxiv_url,
+        "conference": paper_data.conference,
+        "category": category,
+        "tags": tags,
+        "published_at": paper_data.published_at,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 @router.post("/bulk", response_model=BulkImportResponse)
 async def bulk_import(request: BulkImportRequest):
     """Bulk import papers from arXiv or DOI URLs with auto category/tag prediction"""
@@ -186,95 +492,37 @@ async def bulk_import(request: BulkImportRequest):
             url_type = detect_url_type(url)
 
             if url_type == "arxiv":
-                # Import from arXiv
                 paper_data = await arxiv_service.fetch_paper(url)
-
-                # Check for duplicate
                 if any(p.get("arxiv_id") == paper_data.arxiv_id for p in data["papers"]):
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error=f"Duplicate: arXiv ID {paper_data.arxiv_id}"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error=f"Duplicate: arXiv ID {paper_data.arxiv_id}"))
                     failed += 1
                     continue
-
-                # Use provided category or auto-predict
                 category = request.category or predict_category(paper_data.title, paper_data.abstract)
-                tag_names = predict_tags(paper_data.title, paper_data.abstract)
-                tags = get_or_create_tags(data, tag_names)
-                now = now_iso()
-
-                paper = {
-                    "id": generate_id(),
-                    "title": paper_data.title,
-                    "authors": paper_data.authors,
-                    "abstract": paper_data.abstract,
-                    "year": paper_data.year,
-                    "arxiv_id": paper_data.arxiv_id,
-                    "arxiv_url": paper_data.arxiv_url,
-                    "conference": paper_data.conference,
-                    "category": category,
-                    "tags": tags,
-                    "published_at": paper_data.published_at,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                data["papers"].append(paper)
-                results.append(BulkImportResultItem(url=url, success=True, title=paper_data.title))
-                successful += 1
-
+                tags = get_or_create_tags(data, predict_tags(paper_data.title, paper_data.abstract))
+                paper = _build_arxiv_paper(paper_data, category, tags)
             else:
-                # Import from DOI
                 paper_data = await doi_service.fetch_paper(url)
-
-                # Check for duplicate
                 if paper_data.doi and any(p.get("doi") == paper_data.doi for p in data["papers"]):
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error=f"Duplicate: DOI {paper_data.doi}"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error=f"Duplicate: DOI {paper_data.doi}"))
                     failed += 1
                     continue
-
                 if not paper_data.title:
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error="Could not fetch paper title"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error="Could not fetch paper title"))
                     failed += 1
                     continue
-
                 abstract = paper_data.abstract or ""
-
-                # Use provided category or auto-predict
                 category = request.category or predict_category(paper_data.title, abstract)
-                tag_names = predict_tags(paper_data.title, abstract) if abstract else []
-                tags = get_or_create_tags(data, tag_names)
-                now = now_iso()
+                tags = get_or_create_tags(data, predict_tags(paper_data.title, abstract) if abstract else [])
+                paper = _build_doi_paper(paper_data, category, tags)
 
-                paper = {
-                    "id": generate_id(),
-                    "title": paper_data.title,
-                    "authors": paper_data.authors,
-                    "abstract": abstract,
-                    "year": paper_data.year or 0,
-                    "arxiv_id": None,
-                    "arxiv_url": None,
-                    "doi": paper_data.doi,
-                    "paper_url": paper_data.url,
-                    "conference": paper_data.conference,
-                    "category": category,
-                    "tags": tags,
-                    "published_at": paper_data.published_at,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                data["papers"].append(paper)
-                results.append(BulkImportResultItem(url=url, success=True, title=paper_data.title))
-                successful += 1
+            data["papers"].append(paper)
+            results.append(BulkImportResultItem(url=url, success=True, title=paper.get("title")))
+            successful += 1
 
         except Exception as e:
             results.append(BulkImportResultItem(url=url, success=False, error=str(e)))
             failed += 1
 
-    # Save all imported papers
     if successful > 0:
         save_data(data)
 
@@ -364,87 +612,34 @@ async def bulk_import_with_categories(request: BulkImportWithCategoriesRequest):
 
             if url_type == "arxiv":
                 paper_data = await arxiv_service.fetch_paper(url)
-
-                # Check for duplicate
                 if any(p.get("arxiv_id") == paper_data.arxiv_id for p in data["papers"]):
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error=f"Duplicate: arXiv ID {paper_data.arxiv_id}"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error=f"Duplicate: arXiv ID {paper_data.arxiv_id}"))
                     failed += 1
                     continue
-
-                tag_names = predict_tags(paper_data.title, paper_data.abstract)
-                tags = get_or_create_tags(data, tag_names)
-                now = now_iso()
-
-                paper = {
-                    "id": generate_id(),
-                    "title": paper_data.title,
-                    "authors": paper_data.authors,
-                    "abstract": paper_data.abstract,
-                    "year": paper_data.year,
-                    "arxiv_id": paper_data.arxiv_id,
-                    "arxiv_url": paper_data.arxiv_url,
-                    "conference": paper_data.conference,
-                    "category": category,
-                    "tags": tags,
-                    "published_at": paper_data.published_at,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                data["papers"].append(paper)
-                results.append(BulkImportResultItem(url=url, success=True, title=paper_data.title))
-                successful += 1
-
+                tags = get_or_create_tags(data, predict_tags(paper_data.title, paper_data.abstract))
+                paper = _build_arxiv_paper(paper_data, category, tags)
             else:
                 paper_data = await doi_service.fetch_paper(url)
-
-                # Check for duplicate
                 if paper_data.doi and any(p.get("doi") == paper_data.doi for p in data["papers"]):
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error=f"Duplicate: DOI {paper_data.doi}"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error=f"Duplicate: DOI {paper_data.doi}"))
                     failed += 1
                     continue
-
                 if not paper_data.title:
-                    results.append(BulkImportResultItem(
-                        url=url, success=False, error="Could not fetch paper title"
-                    ))
+                    results.append(BulkImportResultItem(url=url, success=False, error="Could not fetch paper title"))
                     failed += 1
                     continue
-
                 abstract = paper_data.abstract or ""
-                tag_names = predict_tags(paper_data.title, abstract) if abstract else []
-                tags = get_or_create_tags(data, tag_names)
-                now = now_iso()
+                tags = get_or_create_tags(data, predict_tags(paper_data.title, abstract) if abstract else [])
+                paper = _build_doi_paper(paper_data, category, tags)
 
-                paper = {
-                    "id": generate_id(),
-                    "title": paper_data.title,
-                    "authors": paper_data.authors,
-                    "abstract": abstract,
-                    "year": paper_data.year or 0,
-                    "arxiv_id": None,
-                    "arxiv_url": None,
-                    "doi": paper_data.doi,
-                    "paper_url": paper_data.url,
-                    "conference": paper_data.conference,
-                    "category": category,
-                    "tags": tags,
-                    "published_at": paper_data.published_at,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                data["papers"].append(paper)
-                results.append(BulkImportResultItem(url=url, success=True, title=paper_data.title))
-                successful += 1
+            data["papers"].append(paper)
+            results.append(BulkImportResultItem(url=url, success=True, title=paper.get("title")))
+            successful += 1
 
         except Exception as e:
             results.append(BulkImportResultItem(url=url, success=False, error=str(e)))
             failed += 1
 
-    # Save all imported papers
     if successful > 0:
         save_data(data)
 
@@ -552,8 +747,8 @@ async def import_from_doi(request: DoiImportRequest):
         "authors": paper_data.authors,
         "abstract": abstract,
         "year": paper_data.year or 0,
-        "arxiv_id": None,
-        "arxiv_url": None,
+        "arxiv_id": paper_data.arxiv_id,
+        "arxiv_url": f"https://arxiv.org/abs/{paper_data.arxiv_id}" if paper_data.arxiv_id else None,
         "doi": paper_data.doi,
         "paper_url": paper_data.url,
         "conference": paper_data.conference,
@@ -1033,8 +1228,10 @@ async def get_uploaded_pdf(paper_id: str):
     if not pdf_path:
         raise HTTPException(status_code=404, detail="No uploaded PDF for this paper")
 
+    # Sanitize path to prevent directory traversal
+    pdf_path = os.path.basename(pdf_path)
     full_path = os.path.join(UPLOAD_DIR, pdf_path)
-    if not os.path.exists(full_path):
+    if not full_path.startswith(os.path.abspath(UPLOAD_DIR)) or not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="PDF file not found")
 
     with open(full_path, "rb") as f:
@@ -1048,3 +1245,100 @@ async def get_uploaded_pdf(paper_id: str):
             "Access-Control-Allow-Origin": "*",
         }
     )
+
+
+SEMANTIC_SCHOLAR_DELAY = 3.5  # Semantic Scholar: ~100 req/5min without API key
+
+
+@router.post("/refresh-conferences")
+async def refresh_conferences():
+    """Refresh conference info for papers with missing or 'arXiv' conference using Semantic Scholar API"""
+    import asyncio
+    import logging
+
+    logger = logging.getLogger(__name__)
+    data = load_data()
+    arxiv_service = get_arxiv_service()
+
+    papers_to_update = [
+        p for p in data["papers"]
+        if p.get("arxiv_id") and (
+            not p.get("conference")
+            or p.get("conference", "").lower().startswith("arxiv")
+        )
+    ]
+
+    updated = 0
+    errors = 0
+
+    for paper in papers_to_update:
+        try:
+            conference = await arxiv_service._fetch_conference(paper["arxiv_id"])
+            if conference:
+                paper["conference"] = conference
+                paper["updated_at"] = now_iso()
+                updated += 1
+            await asyncio.sleep(SEMANTIC_SCHOLAR_DELAY)
+        except Exception as e:
+            logger.warning(f"Failed to refresh conference for {paper.get('arxiv_id')}: {e}")
+            errors += 1
+
+    if updated > 0:
+        save_data(data)
+
+    return {
+        "total_checked": len(papers_to_update),
+        "updated": updated,
+        "errors": errors,
+    }
+
+
+@router.post("/refresh-arxiv-ids")
+async def refresh_arxiv_ids():
+    """Find and fill arXiv IDs for DOI papers using Semantic Scholar API"""
+    import asyncio
+    import logging
+
+    logger = logging.getLogger(__name__)
+    data = load_data()
+
+    papers_to_update = [
+        p for p in data["papers"]
+        if p.get("doi") and not p.get("arxiv_id")
+    ]
+
+    updated = 0
+    errors = 0
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for paper in papers_to_update:
+            try:
+                response = await client.get(
+                    f"https://api.semanticscholar.org/graph/v1/paper/DOI:{paper['doi']}",
+                    params={"fields": "externalIds"},
+                )
+                if response.status_code == 429:
+                    logger.warning("Semantic Scholar rate limit hit, waiting 60s...")
+                    await asyncio.sleep(60)
+                    continue
+                if response.status_code == 200:
+                    ext_ids = response.json().get("externalIds") or {}
+                    arxiv_id = ext_ids.get("ArXiv")
+                    if arxiv_id:
+                        paper["arxiv_id"] = arxiv_id
+                        paper["arxiv_url"] = f"https://arxiv.org/abs/{arxiv_id}"
+                        paper["updated_at"] = now_iso()
+                        updated += 1
+                await asyncio.sleep(SEMANTIC_SCHOLAR_DELAY)
+            except Exception as e:
+                logger.warning(f"Failed to refresh arxiv_id for DOI {paper.get('doi')}: {e}")
+                errors += 1
+
+    if updated > 0:
+        save_data(data)
+
+    return {
+        "total_checked": len(papers_to_update),
+        "updated": updated,
+        "errors": errors,
+    }

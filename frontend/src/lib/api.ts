@@ -14,6 +14,9 @@ import {
   PreviewImportRequest,
   PreviewImportResponse,
   BulkImportWithCategoriesRequest,
+  ScholarSearchResponse,
+  ScholarAddRequest,
+  RelatedPapersResponse,
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -170,6 +173,33 @@ export const papersApi = {
     }
 
     return response.json();
+  },
+
+  searchScholar: async (query: string, limit: number = 5): Promise<ScholarSearchResponse> => {
+    const params = new URLSearchParams();
+    params.set('query', query);
+    params.set('limit', String(limit));
+
+    return fetchApi<ScholarSearchResponse>(`/api/papers/search-scholar?${params.toString()}`);
+  },
+
+  addFromScholar: async (data: ScholarAddRequest): Promise<Paper> => {
+    return fetchApi<Paper>('/api/papers/add-from-scholar', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  getRelatedPapers: async (paperId: string): Promise<RelatedPapersResponse> => {
+    return fetchApi<RelatedPapersResponse>(`/api/papers/related/${paperId}`);
+  },
+
+  getRelatedPapersExternal: async (params: { arxiv_id?: string; doi?: string; title?: string }): Promise<RelatedPapersResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params.arxiv_id) searchParams.set('arxiv_id', params.arxiv_id);
+    if (params.doi) searchParams.set('doi', params.doi);
+    if (params.title) searchParams.set('title', params.title);
+    return fetchApi<RelatedPapersResponse>(`/api/papers/related-external?${searchParams.toString()}`);
   },
 };
 

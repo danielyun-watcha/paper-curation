@@ -146,8 +146,15 @@ export default function StudyPage() {
 
   const selectedPaper = papers.find(p => p.id === selectedPaperId);
 
+  const hasPdfSource = (paper: Paper): boolean => {
+    return !!(paper.arxiv_id || paper.pdf_path);
+  };
+
   const getPdfUrl = (paper: Paper): string | null => {
-    if (paper.arxiv_id || paper.paper_url) {
+    if (paper.pdf_path) {
+      return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers/${paper.id}/pdf-file`;
+    }
+    if (paper.arxiv_id) {
       return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers/${paper.id}/pdf`;
     }
     return null;
@@ -289,7 +296,7 @@ export default function StudyPage() {
                 <>
                   <button
                     onClick={handleFullTranslate}
-                    disabled={fullTranslating || !pdfUrl}
+                    disabled={fullTranslating || !selectedPaper || !hasPdfSource(selectedPaper)}
                     className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                     title="Translate full paper to Korean"
                   >
@@ -312,7 +319,7 @@ export default function StudyPage() {
 
                   <button
                     onClick={handleFullSummarize}
-                    disabled={fullSummarizing || !pdfUrl}
+                    disabled={fullSummarizing || !selectedPaper || !hasPdfSource(selectedPaper)}
                     className="px-3 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                     title="Summarize full paper"
                   >
@@ -397,22 +404,28 @@ export default function StudyPage() {
           <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex-1 ${
             showHighlights || showResults ? '' : 'w-full'
           }`}>
-            {pdfUrl ? (
+            {hasPdfSource(selectedPaper) ? (
               <Suspense fallback={<div className="p-4 text-center">Loading PDF viewer...</div>}>
                 <PdfHighlighter
                   paperId={selectedPaperId}
-                  pdfUrl={pdfUrl}
+                  pdfUrl={pdfUrl!}
                   highlights={highlights}
                   setHighlights={setHighlights}
                 />
               </Suspense>
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-                <div className="text-center">
+                <div className="text-center max-w-md">
                   <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
-                  <p>No PDF available</p>
+                  <p className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Study를 진행할 수 없습니다
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    현재 arXiv 버전이 없는 논문은 Study 기능을 이용할 수 없습니다.
+                    추후 업데이트를 통해 지원할 예정입니다.
+                  </p>
                 </div>
               </div>
             )}

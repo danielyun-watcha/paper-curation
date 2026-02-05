@@ -153,3 +153,44 @@ export const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'rl', label: 'RL' },
   { value: 'other', label: 'Other' },
 ];
+
+export interface ScholarSearchResult {
+  title: string;
+  authors: string[];
+  abstract: string | null;
+  year: number | null;
+  url: string | null;
+  cited_by: number;
+  pub_url: string | null;
+}
+
+export interface ScholarSearchResponse {
+  query: string;
+  results: ScholarSearchResult[];
+}
+
+export interface ScholarAddRequest {
+  title: string;
+  authors: string[];
+  abstract?: string;
+  year?: number;
+  url?: string;
+  category: Category;
+}
+
+export interface RelatedPaperResult {
+  title: string;
+  authors: string[];
+  abstract: string | null;
+  year: number | null;
+  url: string | null;
+  cited_by: number;
+  arxiv_id: string | null;
+  doi: string | null;
+}
+
+export interface RelatedPapersResponse {
+  paper_id: string;
+  paper_title: string;
+  results: RelatedPaperResult[];
+}

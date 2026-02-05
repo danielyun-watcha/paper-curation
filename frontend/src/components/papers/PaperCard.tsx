@@ -63,25 +63,14 @@ export function PaperCard({ paper, onTagClick, readingStatus = 'none', onStatusC
 
         <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
           <span>{paper.year}</span>
-          {paper.arxiv_url && (
+          {(paper.arxiv_url || paper.paper_url) && (
             <a
-              href={paper.arxiv_url}
+              href={paper.arxiv_url || paper.paper_url || '#'}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline"
             >
-              arXiv
-            </a>
-          )}
-          {paper.paper_url && (
-            <a
-              href={paper.paper_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
-            >
-              {paper.paper_url.includes('acm.org') ? 'ACM' :
-               paper.paper_url.includes('ieee') ? 'IEEE' : 'Paper'}
+              Paper
             </a>
           )}
         </div>

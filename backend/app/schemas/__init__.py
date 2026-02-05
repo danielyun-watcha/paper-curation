@@ -13,6 +13,11 @@ from app.schemas.paper import (
     PreviewItem,
     PreviewImportResponse,
     BulkImportWithCategoriesRequest,
+    ScholarSearchResult,
+    ScholarSearchResponse,
+    ScholarAddRequest,
+    RelatedPaperResult,
+    RelatedPapersResponse,
 )
 from app.schemas.tag import TagCreate, TagResponse, TagWithCountResponse
 
@@ -30,6 +35,11 @@ __all__ = [
     "PreviewItem",
     "PreviewImportResponse",
     "BulkImportWithCategoriesRequest",
+    "ScholarSearchResult",
+    "ScholarSearchResponse",
+    "ScholarAddRequest",
+    "RelatedPaperResult",
+    "RelatedPapersResponse",
     "TagCreate",
     "TagResponse",
     "TagWithCountResponse",

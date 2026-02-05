@@ -160,3 +160,49 @@ class BulkImportResponse(BaseModel):
     successful: int
     failed: int
     results: List[BulkImportResultItem]
+
+
+class ScholarSearchResult(BaseModel):
+    """Schema for a single Google Scholar search result"""
+    title: str
+    authors: List[str]
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    cited_by: int = 0
+    pub_url: Optional[str] = None
+
+
+class ScholarSearchResponse(BaseModel):
+    """Schema for Google Scholar search response"""
+    query: str
+    results: List[ScholarSearchResult]
+
+
+class ScholarAddRequest(BaseModel):
+    """Schema for adding a paper from Scholar search result"""
+    title: str
+    authors: List[str]
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    category: Category = Category.OTHER
+
+
+class RelatedPaperResult(BaseModel):
+    """Schema for a single related paper from Semantic Scholar Recommendations"""
+    title: str
+    authors: List[str]
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    cited_by: int = 0
+    arxiv_id: Optional[str] = None
+    doi: Optional[str] = None
+
+
+class RelatedPapersResponse(BaseModel):
+    """Schema for related papers response"""
+    paper_id: str
+    paper_title: str
+    results: List[RelatedPaperResult]
