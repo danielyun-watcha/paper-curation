@@ -13,7 +13,7 @@
 - 🔗 **Connected Papers**: Semantic Scholar API로 관련 논문 찾기
 - 📊 **그래프 시각화**: 논문 간 연관성을 인터랙티브 그래프로 표시
 - 📖 **읽기 추적**: 논문별 읽기 상태 및 메모 관리
-- 📄 **PDF 업로드**: 로컬 PDF 파일 업로드 및 관리
+- 📄 **PDF 업로드**: 로컬 PDF 파일 업로드 및 자동 메타데이터 추출
 
 ### 기술 스택
 - **Backend**: FastAPI (Python 3.9+)
@@ -36,7 +36,8 @@ paper-curation/
 │   │   │   ├── scholar_service.py         # Google Scholar 검색
 │   │   │   ├── semantic_scholar_service.py # Semantic Scholar API
 │   │   │   ├── arxiv_service.py           # arXiv API
-│   │   │   └── crossref_service.py        # Crossref DOI 검색
+│   │   │   ├── crossref_service.py        # Crossref DOI 검색
+│   │   │   └── cache_service.py           # 인메모리 캐시 (API 응답)
 │   │   ├── schemas/
 │   │   │   └── paper.py         # Pydantic 모델 (API 스키마)
 │   │   └── utils/
@@ -138,6 +139,7 @@ NEXT_PUBLIC_API_URL=http://172.16.20.12:8000
 - `DELETE /api/papers/{id}` - 논문 삭제
 - `POST /api/papers/import-arxiv` - arXiv에서 논문 가져오기
 - `POST /api/papers/import-doi` - DOI로 논문 가져오기
+- `POST /api/papers/extract-pdf-metadata` - PDF에서 메타데이터 자동 추출
 - `POST /api/papers/upload-pdf` - PDF 업로드
 
 ### 검색 & 추천
@@ -738,3 +740,105 @@ frontend/src/components/papers/PaperDetail.tsx (MODIFIED)
 3. Connected Papers 패널에 "Close" 버튼 추가
 4. 이미 추가된 논문 표시 (중복 방지)
 5. Citation count 기반 정렬 옵션
+
+---
+
+## 2026-02-05 (Session 3): PDF Auto-Metadata + Cache Service + Graph Improvements
+
+### 개요
+PDF 업로드 시 자동 메타데이터 추출 기능 추가. PDF에서 제목을 추출한 뒤 Semantic Scholar에서 전체 메타데이터를 검색하여 폼을 자동 채움. 추가로 Semantic Scholar API 응답 캐시와 그래프 렌더링 개선도 포함.
+
+### 주요 구현 사항
+
+#### 1. PDF Auto-Metadata Extraction
+
+##### Backend: 새 엔드포인트 (`backend/app/routers/papers.py`)
+- `POST /api/papers/extract-pdf-metadata`
+  - PDF 파일 업로드 받음
+  - `pdf_service.extract_title_from_pdf()`로 제목 추출
+  - 추출된 제목으로 `semantic_scholar_service.search_by_title()` 호출
+  - 성공 시: title, authors, abstract, year, url, doi, arxiv_id, citation_count 반환 (source: "semantic_scholar")
+  - 실패 시: PDF에서 추출한 제목만 반환 (source: "pdf")
+
+##### Backend: 새 스키마 (`backend/app/schemas/paper.py`)
+```python
+class PdfMetadataResponse(BaseModel):
+    title: str
+    authors: List[str] = []
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    citation_count: int = 0
+    source: str = "pdf"  # "pdf" or "semantic_scholar"
+```
+
+##### Frontend: PdfUploader 개선 (`frontend/src/components/papers/PdfUploader.tsx`)
+- PDF 파일 선택 시 즉시 `/api/papers/extract-pdf-metadata` 호출
+- 로딩 상태: "Extracting metadata from PDF..." (animate-pulse)
+- 성공 시 폼 필드 자동 채우기 (title, authors, abstract, year)
+- 피드백 메시지:
+  - Semantic Scholar 매칭: "Metadata auto-filled from Semantic Scholar" (녹색)
+  - PDF만 추출: "Title extracted from PDF (metadata not found on Semantic Scholar)" (노란색)
+- 추출 실패 시 사용자 수동 입력으로 fallback (에러 무시)
+- Submit 버튼: extracting 중 비활성화
+
+##### Frontend: API 클라이언트 (`frontend/src/lib/api.ts`)
+```typescript
+extractPdfMetadata: async (pdf: File): Promise<PdfMetadataResponse>
+```
+
+##### Frontend: 타입 정의 (`frontend/src/types/index.ts`)
+```typescript
+export interface PdfMetadataResponse {
+  title: string;
+  authors: string[];
+  abstract: string | null;
+  year: number | null;
+  url: string | null;
+  doi: string | null;
+  arxiv_id: string | null;
+  citation_count: number;
+  source: 'pdf' | 'semantic_scholar';
+}
+```
+
+#### 2. Recommendation Cache Service (`backend/app/services/cache_service.py`)
+- 인메모리 캐시 (`dict` 기반)
+- TTL 기반 만료 (기본 1시간)
+- `get(key)`, `set(key, value, ttl)` 메서드
+- 주기적 클린업 스케줄러 (`start_cache_cleanup_scheduler()`)
+- `semantic_scholar_service.get_recommendations()`에서 활용
+- `main.py`에서 startup event로 클린업 태스크 시작
+
+#### 3. Graph Rendering 개선 (`frontend/src/components/ConnectedPapersGraph.tsx`)
+- 좌표 시스템: 절대 좌표 → (0,0) 중심 상대 좌표로 변경
+- 노드 크기 축소: center 14→10, min 6→4, max 12→9
+- 줌/팬 비활성화: `enableZoomInteraction={false}`, `enablePanInteraction={false}`
+- 빈 데이터 처리: 조건부 렌더링 추가
+- 투명 배경: `backgroundColor="rgba(255,255,255,0)"`
+- 차원 계산 개선: `getBoundingClientRect()` 사용, 다중 retry (0ms, 100ms, 300ms)
+
+### 파일 변경 내역
+```
+backend/app/services/cache_service.py (NEW)
+backend/app/main.py (startup event 추가)
+backend/app/services/semantic_scholar_service.py (캐시 연동)
+backend/app/routers/papers.py (extract-pdf-metadata 엔드포인트)
+backend/app/schemas/paper.py (PdfMetadataResponse)
+backend/app/schemas/__init__.py (export 추가)
+frontend/src/components/ConnectedPapersGraph.tsx (렌더링 개선)
+frontend/src/app/search/page.tsx (레이아웃 미세 조정)
+frontend/src/components/papers/PdfUploader.tsx (auto-metadata)
+frontend/src/lib/api.ts (extractPdfMetadata 메서드)
+frontend/src/types/index.ts (PdfMetadataResponse 타입)
+```
+
+### Git Commits
+1. **ef4cc5a** - "Add recommendation cache service and improve graph rendering"
+2. **eaad3c4** - "Add PDF upload auto-metadata extraction via Semantic Scholar"
+
+### 알려진 이슈
+1. **PDF 제목 추출 정확도**: PDF metadata가 없거나 첫 페이지 레이아웃이 복잡한 경우 잘못된 제목 추출 가능
+2. **Semantic Scholar 매칭 실패**: 추출된 제목이 부정확하면 Semantic Scholar에서 매칭 실패 → PDF-only 결과 반환
