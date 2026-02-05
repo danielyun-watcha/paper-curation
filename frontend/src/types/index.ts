@@ -194,3 +194,15 @@ export interface RelatedPapersResponse {
   paper_title: string;
   results: RelatedPaperResult[];
 }
+
+export interface PdfMetadataResponse {
+  title: string;
+  authors: string[];
+  abstract: string | null;
+  year: number | null;
+  url: string | null;
+  doi: string | null;
+  arxiv_id: string | null;
+  citation_count: number;
+  source: 'pdf' | 'semantic_scholar';
+}

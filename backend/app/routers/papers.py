@@ -31,6 +31,7 @@ from app.schemas import (
     ScholarAddRequest,
     RelatedPaperResult,
     RelatedPapersResponse,
+    PdfMetadataResponse,
 )
 from app.services.arxiv_service import (
     get_arxiv_service,
@@ -1127,6 +1128,49 @@ async def get_paper_pdf(paper_id: str):
 # PDF upload directory
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+@router.post("/extract-pdf-metadata", response_model=PdfMetadataResponse)
+async def extract_pdf_metadata(
+    pdf: UploadFile = File(...),
+):
+    """Extract metadata from a PDF file using title extraction and Semantic Scholar lookup"""
+    if not pdf.filename or not pdf.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+
+    pdf_content = await pdf.read()
+
+    # Extract title from PDF
+    pdf_service = get_pdf_service()
+    extracted_title = pdf_service.extract_title_from_pdf(pdf_content)
+
+    if not extracted_title:
+        # Fallback to filename
+        extracted_title = pdf.filename.replace('.pdf', '').replace('_', ' ').replace('-', ' ')
+
+    # Search Semantic Scholar for full metadata
+    ss_service = get_semantic_scholar_service()
+    try:
+        ss_paper = await ss_service.search_by_title(extracted_title)
+        if ss_paper:
+            return PdfMetadataResponse(
+                title=ss_paper.title,
+                authors=ss_paper.authors,
+                abstract=ss_paper.abstract,
+                year=ss_paper.year,
+                url=ss_paper.url,
+                doi=ss_paper.doi,
+                arxiv_id=ss_paper.arxiv_id,
+                citation_count=ss_paper.citation_count,
+                source="semantic_scholar",
+            )
+    except SemanticScholarError:
+        pass  # Fall back to PDF-only data
+
+    return PdfMetadataResponse(
+        title=extracted_title,
+        source="pdf",
+    )
 
 
 @router.post("/upload-pdf", response_model=PaperResponse)

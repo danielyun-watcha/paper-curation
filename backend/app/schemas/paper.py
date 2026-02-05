@@ -206,3 +206,16 @@ class RelatedPapersResponse(BaseModel):
     paper_id: str
     paper_title: str
     results: List[RelatedPaperResult]
+
+
+class PdfMetadataResponse(BaseModel):
+    """Schema for extracted PDF metadata"""
+    title: str
+    authors: List[str] = []
+    abstract: Optional[str] = None
+    year: Optional[int] = None
+    url: Optional[str] = None
+    doi: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    citation_count: int = 0
+    source: str = "pdf"  # "pdf" or "semantic_scholar"

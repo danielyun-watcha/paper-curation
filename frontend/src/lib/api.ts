@@ -17,6 +17,7 @@ import {
   ScholarSearchResponse,
   ScholarAddRequest,
   RelatedPapersResponse,
+  PdfMetadataResponse,
 } from '@/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -192,6 +193,24 @@ export const papersApi = {
 
   getRelatedPapers: async (paperId: string): Promise<RelatedPapersResponse> => {
     return fetchApi<RelatedPapersResponse>(`/api/papers/related/${paperId}`);
+  },
+
+  extractPdfMetadata: async (pdf: File): Promise<PdfMetadataResponse> => {
+    const formData = new FormData();
+    formData.append('pdf', pdf);
+
+    const url = `${API_BASE_URL}/api/papers/extract-pdf-metadata`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new ApiError(response.status, error.detail || 'Metadata extraction failed');
+    }
+
+    return response.json();
   },
 
   getRelatedPapersExternal: async (params: { arxiv_id?: string; doi?: string; title?: string }): Promise<RelatedPapersResponse> => {

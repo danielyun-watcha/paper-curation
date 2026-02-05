@@ -18,13 +18,37 @@ export function PdfUploader() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [metadataSource, setMetadataSource] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
       setError(null);
+
+      // Auto-extract metadata
+      setExtracting(true);
+      setMetadataSource(null);
+      try {
+        const metadata = await papersApi.extractPdfMetadata(selectedFile);
+        setTitle(metadata.title);
+        if (metadata.authors.length > 0) {
+          setAuthors(metadata.authors.join(', '));
+        }
+        if (metadata.abstract) {
+          setAbstract(metadata.abstract);
+        }
+        if (metadata.year) {
+          setYear(metadata.year);
+        }
+        setMetadataSource(metadata.source);
+      } catch {
+        // Silently fail - user can still fill in manually
+      } finally {
+        setExtracting(false);
+      }
     } else if (selectedFile) {
       setError('Please select a PDF file');
     }
@@ -100,12 +124,29 @@ export function PdfUploader() {
             className="hidden"
           />
           {file ? (
-            <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium">{file.name}</span>
-              <span className="text-sm text-gray-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+            <div>
+              <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="font-medium">{file.name}</span>
+                <span className="text-sm text-gray-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+              </div>
+              {extracting && (
+                <p className="text-sm text-blue-600 dark:text-blue-400 mt-2 animate-pulse">
+                  Extracting metadata from PDF...
+                </p>
+              )}
+              {metadataSource === 'semantic_scholar' && (
+                <p className="text-sm text-green-600 dark:text-green-400 mt-2">
+                  Metadata auto-filled from Semantic Scholar
+                </p>
+              )}
+              {metadataSource === 'pdf' && (
+                <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-2">
+                  Title extracted from PDF (metadata not found on Semantic Scholar)
+                </p>
+              )}
             </div>
           ) : (
             <div className="text-gray-500 dark:text-gray-400">
@@ -227,10 +268,10 @@ export function PdfUploader() {
       <div className="flex gap-3">
         <button
           type="submit"
-          disabled={loading || !file}
+          disabled={loading || extracting || !file}
           className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? 'Uploading...' : 'Upload Paper'}
+          {loading ? 'Uploading...' : extracting ? 'Extracting metadata...' : 'Upload Paper'}
         </button>
         <button
           type="button"
