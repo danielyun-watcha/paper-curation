@@ -1,181 +1,78 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ScholarSearchResult, RelatedPaperResult } from '@/types';
-import { papersApi } from '@/lib/api';
+import { buildPaperUrl } from '@/lib/extractors';
 import ConnectedPapersGraph from '@/components/ConnectedPapersGraph';
-
-// Extract arxiv ID from URL
-function extractArxivId(url: string): string | null {
-  const match = url.match(/arxiv\.org\/(?:abs|pdf)\/([\d.]+)/);
-  return match ? match[1] : null;
-}
-
-// Extract DOI from URL
-function extractDoi(url: string): string | null {
-  const match = url.match(/doi\.org\/(.+)/);
-  return match ? match[1] : null;
-}
+import { useScholarSearch } from '@/hooks/useScholarSearch';
+import { useConnectedPapers } from '@/hooks/useConnectedPapers';
+import { useAddPaper } from '@/hooks/useAddPaper';
 
 export default function SearchPage() {
+  return (
+    <Suspense fallback={<SearchPageLoading />}>
+      <SearchPageContent />
+    </Suspense>
+  );
+}
+
+function SearchPageLoading() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-gray-500">Loading...</div>
+    </div>
+  );
+}
+
+function SearchPageContent() {
   const searchParams = useSearchParams();
 
-  // Google Scholar search state
-  const [query, setQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState<ScholarSearchResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
+  // Custom hooks for state management
+  const {
+    handleAddFromScholar,
+    handleAddFromRelated,
+    resetAddedIndices,
+    isAdded,
+    isAdding,
+  } = useAddPaper();
 
-  // Add state
-  const [addingIndex, setAddingIndex] = useState<number | null>(null);
-  const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set());
+  const {
+    connectedResults,
+    sourceTitle: connectedSourceTitle,
+    sourceYear: connectedSourceYear,
+    sourceCitations: connectedSourceCitations,
+    hasConnected,
+    connectingIndex,
+    handleConnectFromScholar,
+    handleConnectFromRelated,
+    handleConnectById,
+    clearConnected,
+  } = useConnectedPapers(resetAddedIndices);
 
-  // Connect state (connected papers panel)
-  const [connectingIndex, setConnectingIndex] = useState<number | null>(null);
-  const [connectedResults, setConnectedResults] = useState<RelatedPaperResult[]>([]);
-  const [connectedSourceTitle, setConnectedSourceTitle] = useState('');
-  const [connectedSourceYear, setConnectedSourceYear] = useState<number | undefined>(undefined);
-  const [connectedSourceCitations, setConnectedSourceCitations] = useState<number>(0);
-  const [hasConnected, setHasConnected] = useState(false);
+  const {
+    query,
+    setQuery,
+    searching,
+    results,
+    error,
+    hasSearched,
+    handleSearch,
+    handleKeyDown,
+  } = useScholarSearch(() => {
+    // Clear connected papers when new search starts
+    clearConnected();
+    resetAddedIndices();
+  });
 
-  // Handle URL query params: ?connect={id} → auto-show connected papers
+  // Handle URL query params: ?connect={id} -> auto-show connected papers
   const [autoConnectDone, setAutoConnectDone] = useState(false);
   useEffect(() => {
     const connectId = searchParams.get('connect');
     if (connectId && !autoConnectDone) {
       setAutoConnectDone(true);
-      papersApi.getRelatedPapers(connectId).then(response => {
-        setConnectedResults(response.results);
-        setConnectedSourceTitle(response.paper_title);
-        setHasConnected(true);
-      }).catch(err => {
-        console.error('Auto-connect failed:', err);
-      });
+      handleConnectById(connectId);
     }
-  }, [searchParams, autoConnectDone]);
-
-  // Google Scholar search
-  const handleSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    setError(null);
-    setHasSearched(true);
-    setAddedIndices(new Set());
-    // Clear connected papers when new search is performed
-    setHasConnected(false);
-    setConnectedResults([]);
-    setConnectedSourceTitle('');
-    try {
-      const response = await papersApi.searchScholar(query.trim(), 5);
-      setResults(response.results);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed');
-      setResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSearch();
-    }
-  };
-
-  // Connect: find related papers for a search result or connected result
-  const handleConnect = async (
-    index: number,
-    params: { arxiv_id?: string; doi?: string; title?: string; year?: number; citations?: number }
-  ) => {
-    setConnectingIndex(index);
-    try {
-      const response = await papersApi.getRelatedPapersExternal({
-        arxiv_id: params.arxiv_id || undefined,
-        doi: params.doi || undefined,
-        title: !params.arxiv_id && !params.doi ? params.title : undefined,
-      });
-      setConnectedResults(response.results);
-      setConnectedSourceTitle(params.title || '');
-      setConnectedSourceYear(params.year);
-      setConnectedSourceCitations(params.citations || 0);
-      setHasConnected(true);
-      setAddedIndices(new Set());
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to find connected papers');
-    } finally {
-      setConnectingIndex(null);
-    }
-  };
-
-  // Connect from Scholar result
-  const handleConnectScholar = (index: number, result: ScholarSearchResult) => {
-    const arxivId = extractArxivId(result.url || '') || extractArxivId(result.pub_url || '');
-    const doi = extractDoi(result.url || '') || extractDoi(result.pub_url || '');
-    handleConnect(index, {
-      arxiv_id: arxivId || undefined,
-      doi: doi || undefined,
-      title: result.title,
-      year: result.year || undefined,
-      citations: result.cited_by,
-    });
-  };
-
-  // Connect from Connected result (chain)
-  const handleConnectChain = (index: number, result: RelatedPaperResult) => {
-    handleConnect(index, {
-      arxiv_id: result.arxiv_id || undefined,
-      doi: result.doi || undefined,
-      title: result.title,
-      year: result.year || undefined,
-      citations: result.cited_by,
-    });
-  };
-
-  // Add paper from Scholar result
-  const handleAddScholar = async (index: number, result: ScholarSearchResult) => {
-    setAddingIndex(index);
-    try {
-      await papersApi.addFromScholar({
-        title: result.title,
-        authors: result.authors,
-        abstract: result.abstract || undefined,
-        year: result.year || undefined,
-        url: result.url || undefined,
-        category: 'other',
-      });
-      setAddedIndices(prev => new Set(prev).add(index));
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add paper');
-    } finally {
-      setAddingIndex(null);
-    }
-  };
-
-  // Add paper from Connected result
-  const handleAddConnected = async (index: number, result: RelatedPaperResult) => {
-    setAddingIndex(index);
-    try {
-      const url = result.url
-        || (result.arxiv_id ? `https://arxiv.org/abs/${result.arxiv_id}` : undefined)
-        || (result.doi ? `https://doi.org/${result.doi}` : undefined);
-      await papersApi.addFromScholar({
-        title: result.title,
-        authors: result.authors,
-        abstract: result.abstract || undefined,
-        year: result.year || undefined,
-        url: url,
-        category: 'other',
-      });
-      setAddedIndices(prev => new Set(prev).add(index));
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to add paper');
-    } finally {
-      setAddingIndex(null);
-    }
-  };
+  }, [searchParams, autoConnectDone, handleConnectById]);
 
   // Shared result card renderer
   const renderResultCard = (
@@ -220,7 +117,7 @@ export default function SearchPage() {
           )}
 
           <div className="mt-3 ml-6 flex items-center gap-2">
-            {addedIndices.has(index) ? (
+            {isAdded(index) ? (
               <span className="inline-flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -230,10 +127,10 @@ export default function SearchPage() {
             ) : (
               <button
                 onClick={onAdd}
-                disabled={addingIndex === index}
+                disabled={isAdding(index)}
                 className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {addingIndex === index ? (
+                {isAdding(index) ? (
                   <>
                     <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -302,7 +199,7 @@ export default function SearchPage() {
         Similar Paper Search
       </h1>
 
-      {/* Search Box - Always at top, full width */}
+      {/* Search Box */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <div className="space-y-4">
           <div>
@@ -367,9 +264,9 @@ export default function SearchPage() {
 
       {/* Two different layouts based on whether graph is shown */}
       {hasConnected ? (
-        /* Layout with graph: 3-column grid - Scholar left, Graph center, Paper Details right */
+        /* Layout with graph: 3-column grid */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Left column: Scholar results (compact, 2 columns) */}
+          {/* Left column: Scholar results (compact) */}
           {hasSearched && !searching && !error && (
             <div className="lg:col-span-2">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden h-[600px] flex flex-col">
@@ -389,7 +286,7 @@ export default function SearchPage() {
                     No papers found
                   </div>
                 ) : (
-                  <ul className="divide-y divide-gray-200 dark:divide-gray-700 flex-1">
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-700 flex-1 overflow-y-auto">
                     {results.map((result, index) => (
                       <li key={index} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                         <div className="space-y-2">
@@ -413,7 +310,7 @@ export default function SearchPage() {
                           </p>
 
                           <div className="flex gap-1.5">
-                            {addedIndices.has(index) ? (
+                            {isAdded(index) ? (
                               <span className="inline-flex items-center gap-0.5 text-xs text-green-600 dark:text-green-400">
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -423,14 +320,14 @@ export default function SearchPage() {
                             ) : (
                               <>
                                 <button
-                                  onClick={() => handleAddScholar(index, result)}
-                                  disabled={addingIndex === index}
+                                  onClick={() => handleAddFromScholar(index, result)}
+                                  disabled={isAdding(index)}
                                   className="text-xs px-1.5 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
                                 >
-                                  {addingIndex === index ? 'Adding...' : 'Add'}
+                                  {isAdding(index) ? 'Adding...' : 'Add'}
                                 </button>
                                 <button
-                                  onClick={() => handleConnectScholar(index, result)}
+                                  onClick={() => handleConnectFromScholar(index, result)}
                                   disabled={connectingIndex === index}
                                   className="text-xs px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
                                 >
@@ -448,7 +345,7 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Middle column: Graph (5 columns) */}
+          {/* Middle column: Graph */}
           <div className={`${hasSearched && !searching && !error ? 'lg:col-span-5' : 'lg:col-span-7'}`}>
             {connectedResults.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-purple-200 dark:border-purple-800 h-[600px] flex flex-col">
@@ -482,7 +379,7 @@ export default function SearchPage() {
             )}
           </div>
 
-          {/* Right column: Paper Details (5 columns) */}
+          {/* Right column: Paper Details */}
           <div className={`${hasSearched && !searching && !error ? 'lg:col-span-5' : 'lg:col-span-5'}`}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden border-2 border-purple-200 dark:border-purple-800 h-[600px] flex flex-col">
               <div className="p-3 border-b border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 flex-shrink-0">
@@ -501,21 +398,23 @@ export default function SearchPage() {
               ) : (
                 <ul className="divide-y divide-gray-200 dark:divide-gray-700 overflow-y-auto flex-1">
                   {connectedResults.map((result, index) => {
-                    const paperUrl = result.url
-                      || (result.arxiv_id ? `https://arxiv.org/abs/${result.arxiv_id}` : null)
-                      || (result.doi ? `https://doi.org/${result.doi}` : null);
+                    const paperUrl = buildPaperUrl({
+                      url: result.url,
+                      arxiv_id: result.arxiv_id,
+                      doi: result.doi,
+                    });
                     const offsetIndex = index + 100;
                     return renderResultCard(
                       offsetIndex,
                       result.title,
-                      paperUrl,
+                      paperUrl || null,
                       result.authors,
                       result.year,
                       result.abstract,
                       result.cited_by,
-                      paperUrl,
-                      () => handleAddConnected(offsetIndex, result),
-                      () => handleConnectChain(offsetIndex, result),
+                      paperUrl || null,
+                      () => handleAddFromRelated(offsetIndex, result),
+                      () => handleConnectFromRelated(offsetIndex, result),
                       index,
                     );
                   })}
@@ -555,8 +454,8 @@ export default function SearchPage() {
                     result.abstract,
                     result.cited_by,
                     result.pub_url,
-                    () => handleAddScholar(index, result),
-                    () => handleConnectScholar(index, result),
+                    () => handleAddFromScholar(index, result),
+                    () => handleConnectFromScholar(index, result),
                   )
                 )}
               </ul>

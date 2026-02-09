@@ -219,3 +219,13 @@ class PdfMetadataResponse(BaseModel):
     arxiv_id: Optional[str] = None
     citation_count: int = 0
     source: str = "pdf"  # "pdf" or "semantic_scholar"
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response schema for API documentation"""
+    detail: str = Field(..., description="Human-readable error message")
+
+    class Config:
+        json_schema_extra = {
+            "example": {"detail": "Paper not found"}
+        }

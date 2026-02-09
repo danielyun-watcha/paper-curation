@@ -1,29 +1,35 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  debounceMs?: number;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search papers...' }: SearchBarProps) {
+export function SearchBar({
+  value,
+  onChange,
+  placeholder = 'Search papers...',
+  debounceMs = 300,
+}: SearchBarProps) {
   const [localValue, setLocalValue] = useState(value);
+  const debouncedValue = useDebounce(localValue, debounceMs);
 
+  // Sync local value with prop when it changes externally
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
 
+  // Call onChange when debounced value changes
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (localValue !== value) {
-        onChange(localValue);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [localValue, value, onChange]);
+    if (debouncedValue !== value) {
+      onChange(debouncedValue);
+    }
+  }, [debouncedValue, value, onChange]);
 
   return (
     <div className="relative">

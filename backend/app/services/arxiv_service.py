@@ -8,6 +8,8 @@ from typing import List, Optional
 import httpx
 from defusedxml import ElementTree as ET
 
+from app.utils.venue_utils import extract_conference_from_ss_data
+
 logger = logging.getLogger(__name__)
 
 
@@ -110,30 +112,7 @@ class ArxivService:
                 return None
 
             data = response.json()
-            year = data.get("year")
-            year_suffix = f"'{str(year)[-2:]}" if year else ""
-
-            # Try publicationVenue first - prefer abbreviation from alternate_names
-            pub_venue = data.get("publicationVenue")
-            if pub_venue:
-                # Look for short abbreviation in alternate_names (e.g., "ICML", "NeurIPS")
-                alt_names = pub_venue.get("alternate_names", [])
-                for name in alt_names:
-                    # Prefer short uppercase abbreviations
-                    if name.isupper() and len(name) <= 10:
-                        return f"{name}{year_suffix}"
-                # Fall back to first alternate name or full name
-                if alt_names:
-                    return f"{alt_names[0]}{year_suffix}"
-                if pub_venue.get("name"):
-                    return f"{pub_venue['name']}{year_suffix}"
-
-            # Fall back to venue string
-            venue = data.get("venue")
-            if venue and venue.lower() not in ("arxiv", "arxiv.org"):
-                return f"{venue}{year_suffix}"
-
-            return None
+            return extract_conference_from_ss_data(data)
         except Exception as e:
             logger.warning(f"Failed to fetch conference for arXiv:{arxiv_id}: {e}")
             return None

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Paper, PaperSummary, PaperTranslation, TranslationResponse } from '@/types';
+import { Paper, PaperSummary, PaperTranslation } from '@/types';
 import { CategoryBadge } from '@/components/ui/Badge';
 import { Tag } from '@/components/ui/Tag';
 import { formatDate } from '@/lib/utils';

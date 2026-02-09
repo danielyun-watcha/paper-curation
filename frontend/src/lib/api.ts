@@ -45,7 +45,30 @@ async function fetchApi<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new ApiError(response.status, error.detail || 'Request failed');
+    throw new ApiError(response.status, error.detail || error.message || 'Request failed');
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetch helper for FormData requests (file uploads)
+ * Does not set Content-Type header (browser sets it automatically with boundary)
+ */
+async function fetchFormData<T>(
+  endpoint: string,
+  formData: FormData
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new ApiError(response.status, error.detail || error.message || 'Request failed');
   }
 
   return response.json();
@@ -162,18 +185,7 @@ export const papersApi = {
     formData.append('category', data.category);
     formData.append('tags', data.tags);
 
-    const url = `${API_BASE_URL}/api/papers/upload-pdf`;
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new ApiError(response.status, error.detail || 'Upload failed');
-    }
-
-    return response.json();
+    return fetchFormData<Paper>('/api/papers/upload-pdf', formData);
   },
 
   searchScholar: async (query: string, limit: number = 5): Promise<ScholarSearchResponse> => {
@@ -198,19 +210,7 @@ export const papersApi = {
   extractPdfMetadata: async (pdf: File): Promise<PdfMetadataResponse> => {
     const formData = new FormData();
     formData.append('pdf', pdf);
-
-    const url = `${API_BASE_URL}/api/papers/extract-pdf-metadata`;
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-      throw new ApiError(response.status, error.detail || 'Metadata extraction failed');
-    }
-
-    return response.json();
+    return fetchFormData<PdfMetadataResponse>('/api/papers/extract-pdf-metadata', formData);
   },
 
   getRelatedPapersExternal: async (params: { arxiv_id?: string; doi?: string; title?: string }): Promise<RelatedPapersResponse> => {

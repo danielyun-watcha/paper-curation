@@ -178,17 +178,13 @@ Korean Translation:"""
 
     SECTION_TRANSLATION_PROMPT = """You are a professional translator. Translate the following research paper section to Korean.
 
-IMPORTANT:
-- Translate naturally and accurately
-- Keep technical terms in English with Korean explanation in parentheses if needed
-- Preserve mathematical equations and formulas as-is (do not translate LaTeX/math notation)
-- SKIP the following content (do not translate):
-  * Table descriptions and table contents
-  * Figure descriptions and captions
-  * Author names, affiliations, emails
-  * Acknowledgments
-  * References/Bibliography
-- Output ONLY the Korean translation of the main text and equations
+CRITICAL RULES:
+1. Translate ONLY the text provided below - do not add, expand, or generate any new content
+2. If the content seems incomplete, translate only what is given - do NOT continue or complete it
+3. Keep technical terms in English with Korean explanation in parentheses if needed
+4. Preserve mathematical equations and formulas as-is (do not translate LaTeX/math notation)
+5. Output ONLY the Korean translation, nothing else
+6. Do NOT add section numbers, labels, or headers that don't exist in the original
 
 Section: {section_name}
 
@@ -196,6 +192,175 @@ Content:
 {text}
 
 Korean Translation:"""
+
+    def _clean_translation(self, text: str) -> str:
+        """Clean up translated text to remove hallucinated content."""
+        import re
+
+        lines = text.split('\n')
+        cleaned_lines = []
+
+        for line in lines:
+            line_stripped = line.strip()
+
+            # Skip lines that indicate hallucinated section markers
+            if re.match(r'^\*?\*?초록\s*\(\d+/\d+\)', line_stripped):
+                continue
+            if re.match(r'^\*?\*?(Section|Part|번역)\s*\d+', line_stripped, re.IGNORECASE):
+                continue
+            # Skip lines that look like the model is starting a new section
+            if re.match(r'^(Korean Translation|영어 원문|Original|번역문):', line_stripped):
+                continue
+            # Skip template/placeholder text (hallucination)
+            if re.search(r'\[.*?(목적|내용|요약|설명|언급|제시|작성).*?\]', line_stripped):
+                continue
+            # Skip conference reference lines (translated)
+            if re.match(r"^(KDD|SIGKDD|SIGIR|WWW|AAAI|ICML|NeurIPS|ICLR|ACL|EMNLP)\s*['\"]?\d{2}", line_stripped):
+                continue
+            if re.search(r'\d{1,2}월\s+\d{1,2}일.*?(토론토|뉴욕|시애틀|밴쿠버|런던|파리|시드니)', line_stripped):
+                continue
+
+            cleaned_lines.append(line)
+
+        return '\n'.join(cleaned_lines).strip()
+
+    def _filter_metadata_noise(self, text: str) -> str:
+        """Remove author info, affiliations, copyright notices, and other metadata noise."""
+        import re
+
+        lines = text.split('\n')
+        filtered_lines = []
+
+        # Patterns to skip
+        skip_patterns = [
+            r'@.*\.(edu|com|org|cn|ac)',  # Email addresses
+            r'^[A-Z][a-z]+\s+(University|Institute|Lab|College)',  # Affiliations
+            r'^\*.*corresponding author',  # Corresponding author notes
+            r'^(Permission|ACM|Copyright|©|\d{4}\s+Copyright)',  # Copyright notices
+            r'^(CCS\s+Concepts|ACM\s+Reference|Keywords:)',  # ACM metadata
+            r'^https?://(doi\.org|dx\.doi)',  # DOI URLs
+            r'^(ISBN|DOI|ISSN)\s*[\d\-]',  # Identifiers
+            r'^arXiv:\d+\.\d+',  # arXiv ID lines
+            r'^\s*permissions@acm\.org',  # ACM permissions
+            r"^(KDD|SIGKDD|SIGIR|WWW|AAAI|ICML|NeurIPS|ICLR|ACL|EMNLP|NAACL|CVPR|ICCV|ECCV)\s*['\"]?\d{2}",  # Conference references
+            r"^\d{4}\s+(ACM|IEEE)",  # Year + Publisher
+            r"^Proceedings\s+of",  # Proceedings headers
+            r"^In\s+Proceedings",  # "In Proceedings of..."
+            r"August\s+\d+.*\d{4}",  # Date patterns like "August 3-7, 2025"
+            r"^\d+\s+(pages?|pp\.)",  # Page numbers
+        ]
+
+        in_author_block = False
+        blank_count = 0
+
+        for line in lines:
+            line_stripped = line.strip()
+
+            # Skip empty lines in author block
+            if in_author_block:
+                if line_stripped == '':
+                    blank_count += 1
+                    if blank_count >= 2:
+                        in_author_block = False
+                    continue
+                blank_count = 0
+
+            # Check if line matches skip patterns
+            should_skip = False
+            for pattern in skip_patterns:
+                if re.search(pattern, line_stripped, re.IGNORECASE):
+                    should_skip = True
+                    in_author_block = True
+                    blank_count = 0
+                    break
+
+            # Skip lines that look like author names followed by affiliation
+            if not should_skip and re.match(r'^[A-Z][a-z]+\s+[A-Z][a-z]+\s*$', line_stripped):
+                # Likely an author name, check next few lines for affiliation patterns
+                should_skip = True
+                in_author_block = True
+                blank_count = 0
+
+            if not should_skip and not in_author_block:
+                filtered_lines.append(line)
+
+        return '\n'.join(filtered_lines)
+
+    def _filter_tables_and_figures(self, text: str) -> str:
+        """Remove tables, figures, and their captions from text before translation."""
+        import re
+
+        # First filter metadata noise
+        text = self._filter_metadata_noise(text)
+
+        lines = text.split('\n')
+        filtered_lines = []
+        in_table_or_figure = False
+        blank_line_count = 0
+
+        # Pattern for table data: line with multiple numbers/decimals separated by whitespace
+        table_data_pattern = re.compile(r'^\s*[\w\-]+\s+\d+\.?\d*\s+\d+\.?\d*')  # "Model 0.123 0.456..."
+        header_row_pattern = re.compile(r'^\s*(Model|Dataset|Method|Metric|NG@|HR@|MRR|AUC)', re.IGNORECASE)
+
+        for line in lines:
+            line_stripped = line.strip()
+            line_lower = line_stripped.lower()
+
+            # Detect table/figure captions
+            if re.match(r'^(table|표)\s*\d+', line_lower):
+                if not in_table_or_figure:
+                    filtered_lines.append("\n[표 생략]\n")
+                in_table_or_figure = True
+                blank_line_count = 0
+                continue
+
+            if re.match(r'^(figure|fig\.?|그림)\s*\d+', line_lower):
+                if not in_table_or_figure:
+                    filtered_lines.append("\n[그림 생략]\n")
+                in_table_or_figure = True
+                blank_line_count = 0
+                continue
+
+            # If we're in a table/figure section
+            if in_table_or_figure:
+                # Check for blank line
+                if line_stripped == '':
+                    blank_line_count += 1
+                    # Two consecutive blank lines = end of table/figure
+                    if blank_line_count >= 2:
+                        in_table_or_figure = False
+                    continue
+
+                # Reset blank line counter if we see content
+                blank_line_count = 0
+
+                # Skip table data rows and headers
+                if table_data_pattern.match(line_stripped) or header_row_pattern.match(line_stripped):
+                    continue
+
+                # Skip short lines that are likely part of table/figure (captions, labels)
+                if len(line_stripped) < 100 and not line_stripped.endswith('.'):
+                    continue
+
+                # If we see a long sentence ending with period, probably back to main text
+                if len(line_stripped) > 100 and line_stripped.endswith('.'):
+                    in_table_or_figure = False
+                    filtered_lines.append(line)
+                    continue
+
+                # Skip this line (still in table/figure)
+                continue
+
+            # Not in table/figure - keep the line
+            filtered_lines.append(line)
+
+        # Clean up multiple consecutive [표 생략] or [그림 생략]
+        result = '\n'.join(filtered_lines)
+        result = re.sub(r'(\[표 생략\]\s*)+', '[표 생략]\n', result)
+        result = re.sub(r'(\[그림 생략\]\s*)+', '[그림 생략]\n', result)
+        result = re.sub(r'\n{3,}', '\n\n', result)
+
+        return result.strip()
 
     def _parse_paper_sections(self, text: str) -> list[dict]:
         """Parse paper text into sections"""
@@ -262,8 +427,91 @@ Korean Translation:"""
 
         return sections
 
+    def _split_into_chunks(self, text: str, max_chars: int = 3000) -> list[str]:
+        """Split text into chunks, trying to break at paragraph or sentence boundaries."""
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        remaining = text
+
+        while remaining:
+            if len(remaining) <= max_chars:
+                chunks.append(remaining)
+                break
+
+            # Try to find a good break point within max_chars
+            chunk = remaining[:max_chars]
+
+            # Priority 1: Break at paragraph (double newline)
+            last_para = chunk.rfind('\n\n')
+            if last_para > max_chars * 0.5:  # At least 50% of chunk
+                chunks.append(remaining[:last_para].strip())
+                remaining = remaining[last_para:].strip()
+                continue
+
+            # Priority 2: Break at sentence end (. followed by space or newline)
+            last_sentence = -1
+            for i in range(len(chunk) - 1, max_chars // 2, -1):
+                if chunk[i] == '.' and (i + 1 >= len(chunk) or chunk[i + 1] in ' \n'):
+                    last_sentence = i + 1
+                    break
+
+            if last_sentence > 0:
+                chunks.append(remaining[:last_sentence].strip())
+                remaining = remaining[last_sentence:].strip()
+                continue
+
+            # Priority 3: Break at any newline
+            last_newline = chunk.rfind('\n')
+            if last_newline > max_chars * 0.5:
+                chunks.append(remaining[:last_newline].strip())
+                remaining = remaining[last_newline:].strip()
+                continue
+
+            # Fallback: Hard break at max_chars
+            chunks.append(remaining[:max_chars].strip())
+            remaining = remaining[max_chars:].strip()
+
+        return chunks
+
+    async def _translate_chunk(
+        self, client: httpx.AsyncClient, section_name: str, text: str, chunk_num: int = 0, total_chunks: int = 1
+    ) -> str:
+        """Translate a single chunk of text."""
+        chunk_info = f" (Part {chunk_num + 1}/{total_chunks})" if total_chunks > 1 else ""
+
+        prompt = self.SECTION_TRANSLATION_PROMPT.format(
+            section_name=f"{section_name}{chunk_info}",
+            text=text
+        )
+
+        response = await client.post(
+            self.OLLAMA_API_URL,
+            json={
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "num_predict": 4096,
+                    "stop": ["Section:", "Content:", "Korean Translation:", "---", "(1/", "(2/", "초록 ("],
+                }
+            },
+        )
+
+        if response.status_code != 200:
+            return f"[번역 실패: {response.status_code}]"
+
+        result = response.json()
+        translated = result.get("response", "").strip()
+
+        # Post-process: remove any hallucinated section markers
+        translated = self._clean_translation(translated)
+        return translated
+
     async def translate_full_paper(self, text: str) -> list[dict]:
-        """Translate full paper text to Korean, section by section"""
+        """Translate full paper text to Korean, section by section with chunking for long sections."""
         sections = self._parse_paper_sections(text)
         translated_sections = []
 
@@ -286,45 +534,27 @@ Korean Translation:"""
                     })
                     continue
 
-                # Limit section length
                 content = section["content"]
-                if len(content) > 5000:
-                    content = content[:5000] + "\n\n[... 길이 제한으로 생략 ...]"
-
-                prompt = self.SECTION_TRANSLATION_PROMPT.format(
-                    section_name=section["name"],
-                    text=content
-                )
 
                 try:
-                    response = await client.post(
-                        self.OLLAMA_API_URL,
-                        json={
-                            "model": self.model,
-                            "prompt": prompt,
-                            "stream": False,
-                            "options": {
-                                "temperature": 0.3,
-                                "num_predict": 4096,
-                            }
-                        },
-                    )
+                    # Filter out tables and figures before translation
+                    filtered_content = self._filter_tables_and_figures(content)
 
-                    if response.status_code != 200:
-                        translated_sections.append({
-                            "name": section["name"],
-                            "original": section["content"],
-                            "translated": f"[번역 실패: {response.status_code}]"
-                        })
-                        continue
+                    # Split long sections into chunks
+                    chunks = self._split_into_chunks(filtered_content, max_chars=3000)
+                    translated_parts = []
 
-                    result = response.json()
-                    translated_text = result.get("response", "").strip()
+                    for i, chunk in enumerate(chunks):
+                        translated = await self._translate_chunk(
+                            client, section["name"], chunk, i, len(chunks)
+                        )
+                        translated_parts.append(translated)
 
+                    # Combine all translated parts
                     translated_sections.append({
                         "name": section["name"],
-                        "original": section["content"],
-                        "translated": translated_text
+                        "original": content,
+                        "translated": "\n\n".join(translated_parts)
                     })
 
                 except httpx.ConnectError:

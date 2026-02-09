@@ -19,6 +19,22 @@ const HIGHLIGHT_COLORS: Record<string, { background: string; border: string }> =
 };
 
 export default function StudyPage() {
+  return (
+    <Suspense fallback={<StudyPageLoading />}>
+      <StudyPageContent />
+    </Suspense>
+  );
+}
+
+function StudyPageLoading() {
+  return (
+    <div className="h-[calc(100vh-130px)] flex items-center justify-center">
+      <div className="text-gray-500">Loading...</div>
+    </div>
+  );
+}
+
+function StudyPageContent() {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [selectedPaperId, setSelectedPaperId] = useState<string>('');
   const [loadingPapers, setLoadingPapers] = useState(true);
@@ -42,7 +58,7 @@ export default function StudyPage() {
   const [showResults, setShowResults] = useState(false);
 
   // Collapsible panels
-  const [showTranslationContent, setShowTranslationContent] = useState(true);
+  const [, setShowTranslationContent] = useState(true);
   const [showSummaryContent, setShowSummaryContent] = useState(true);
 
   // Save notification
@@ -266,10 +282,10 @@ export default function StudyPage() {
   const pdfUrl = selectedPaper ? getPdfUrl(selectedPaper) : null;
 
   return (
-    <div className="h-[calc(100vh-130px)] flex flex-col">
+    <div className="h-[calc(100vh-100px)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="flex items-center justify-between mb-2 flex-shrink-0">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
           Study
         </h1>
         <div className="flex items-center gap-2">
@@ -489,7 +505,7 @@ export default function StudyPage() {
 
           {/* Results Panel */}
           {showResults && (fullTranslation || fullSummary) && (
-            <div className="w-96 bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
+            <div className="flex-1 min-w-[400px] bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
               <div className="p-3 border-b border-gray-200 dark:border-gray-700">
                 <h3 className="font-bold text-gray-900 dark:text-white">Results</h3>
               </div>
@@ -546,7 +562,7 @@ export default function StudyPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                    <div className="space-y-2">
                       {fullTranslation.map((section, index) => (
                         <div
                           key={index}

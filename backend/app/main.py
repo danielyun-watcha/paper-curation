@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.routers import papers, tags
 from app.services.cache_service import start_cache_cleanup_scheduler
+from app.utils.http_client import HttpClientManager
 
 settings = get_settings()
 
@@ -16,6 +17,12 @@ app = FastAPI(title=settings.app_name)
 async def startup_event():
     """Start background tasks on app startup"""
     asyncio.create_task(start_cache_cleanup_scheduler())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on app shutdown"""
+    await HttpClientManager.close_all()
 
 # CORS middleware - allow all origins for development
 app.add_middleware(

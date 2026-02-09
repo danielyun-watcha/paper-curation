@@ -26,7 +26,7 @@ export default function HomePage() {
   const [statusFilter, setStatusFilter] = useState<ReadingStatus | 'all'>('all');
   const [sortBy, setSortBy] = useState<string>('updated_desc');
 
-  const { getStatus, setStatus, isFavorite, toggleFavorite, isLoaded } = useReadingStatus();
+  const { getStatus, setStatus, isLoaded } = useReadingStatus();
 
   const fetchPapers = useCallback(async () => {
     try {

@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { RelatedPaperResult } from '@/types';
+import {
+  GRAPH_LAYOUT,
+  GRAPH_NODE,
+  GRAPH_COLORS,
+  GRAPH_LINKS,
+  GRAPH_SHADOW,
+} from '@/lib/constants';
 
 // Dynamically import ForceGraph2D to avoid SSR issues
 const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
@@ -51,15 +58,18 @@ export default function ConnectedPapersGraph({
 }: ConnectedPapersGraphProps) {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const containerRef = useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 500, height: 450 });
+  const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
+    width: GRAPH_LAYOUT.DEFAULT_WIDTH,
+    height: GRAPH_LAYOUT.DEFAULT_HEIGHT,
+  });
 
   // Update dimensions on mount and resize
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
-        const width = rect.width || 500;
-        const height = 450; // Fixed height
+        const width = rect.width || GRAPH_LAYOUT.DEFAULT_WIDTH;
+        const height = GRAPH_LAYOUT.DEFAULT_HEIGHT;
         if (width > 0) {
           setDimensions({ width, height });
         }
@@ -70,8 +80,9 @@ export default function ConnectedPapersGraph({
     updateDimensions();
 
     // Retry with delays
-    const timer1 = setTimeout(updateDimensions, 100);
-    const timer2 = setTimeout(updateDimensions, 300);
+    const [delay1, delay2] = GRAPH_LAYOUT.DIMENSION_RETRY_DELAYS;
+    const timer1 = setTimeout(updateDimensions, delay1);
+    const timer2 = setTimeout(updateDimensions, delay2);
 
     window.addEventListener('resize', updateDimensions);
     return () => {
@@ -84,7 +95,7 @@ export default function ConnectedPapersGraph({
   // Build graph data with circular layout - stable and reliable
   useEffect(() => {
     // react-force-graph-2d uses (0,0) as canvas center
-    const baseRadius = Math.min(dimensions.width, dimensions.height) * 0.17;
+    const baseRadius = Math.min(dimensions.width, dimensions.height) * GRAPH_LAYOUT.RADIUS_RATIO;
 
     const nodes: Node[] = [
       {
@@ -136,6 +147,9 @@ export default function ConnectedPapersGraph({
     });
 
     // Add cross-links between papers based on similarity
+    const { MAX_CITATION_DIFF, MAX_YEAR_DIFF, CITATION_NORM_DIVISOR, YEAR_NORM_DIVISOR } =
+      GRAPH_LINKS.SIMILARITY;
+
     for (let i = 0; i < connectedPapers.length; i++) {
       // Connect to next 2-3 papers for web-like structure
       for (let j = i + 1; j <= Math.min(i + 3, connectedPapers.length - 1); j++) {
@@ -143,10 +157,10 @@ export default function ConnectedPapersGraph({
         const yearDiff = Math.abs((connectedPapers[i].year || 0) - (connectedPapers[j].year || 0));
 
         // Papers similar in citations and year are likely related
-        if (citationDiff < 150 || yearDiff <= 2) {
+        if (citationDiff < MAX_CITATION_DIFF || yearDiff <= MAX_YEAR_DIFF) {
           // Calculate link strength: more similar = stronger
-          const citationSimilarity = 1 - Math.min(citationDiff / 150, 1);
-          const yearSimilarity = 1 - Math.min(yearDiff / 5, 1);
+          const citationSimilarity = 1 - Math.min(citationDiff / CITATION_NORM_DIVISOR, 1);
+          const yearSimilarity = 1 - Math.min(yearDiff / YEAR_NORM_DIVISOR, 1);
           const strength = (citationSimilarity + yearSimilarity) / 2;
 
           links.push({
@@ -163,37 +177,35 @@ export default function ConnectedPapersGraph({
 
   // Color based on year with EXTREME contrast - Teal to Purple gradient
   const getNodeColor = (year: number | null, isCenter: boolean) => {
-    if (isCenter) return '#a855f7'; // Brighter purple for center node
-    if (!year) return '#94a3b8'; // Gray for unknown year
+    if (isCenter) return GRAPH_COLORS.CENTER;
+    if (!year) return GRAPH_COLORS.UNKNOWN_YEAR;
 
+    const { MIN_YEAR, HUE_START, HUE_END, SATURATION_START, SATURATION_END, LIGHTNESS_START, LIGHTNESS_END } =
+      GRAPH_COLORS.YEAR_GRADIENT;
     const currentYear = new Date().getFullYear();
-    const minYear = 2019; // Tighter range for max contrast
     const maxYear = currentYear;
 
     // Normalize year to 0-1 range
-    const normalized = Math.max(0, Math.min(1, (year - minYear) / (maxYear - minYear)));
+    const normalized = Math.max(0, Math.min(1, (year - MIN_YEAR) / (maxYear - MIN_YEAR)));
 
     // EXTREME contrast: Light Cyan/Teal → Deep Purple/Violet
-    // Old papers (2019-2020): Very light cyan (hue 180, light)
-    // New papers (2025-2026): Deep purple/violet (hue 270, dark)
-    const hue = 180 + (normalized * 90); // 180 (cyan) → 270 (purple)
-    const saturation = 45 + (normalized * 50); // 45% → 95%
-    const lightness = 85 - (normalized * 70); // 85% (very light) → 15% (very dark)
+    const hue = HUE_START + (normalized * (HUE_END - HUE_START));
+    const saturation = SATURATION_START + (normalized * (SATURATION_END - SATURATION_START));
+    const lightness = LIGHTNESS_START - (normalized * (LIGHTNESS_START - LIGHTNESS_END));
 
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   };
 
   // Size based on citations - significant variation
   const getNodeSize = (citations: number, isCenter: boolean) => {
-    if (isCenter) return 10; // Center node
+    if (isCenter) return GRAPH_NODE.CENTER_SIZE;
 
     // Clear variation based on citations
-    const minSize = 4;
-    const maxSize = 9;
+    const { MIN_SIZE, MAX_SIZE, MAX_CITATIONS_FOR_SCALE } = GRAPH_NODE;
     const logCitations = Math.log(citations + 1);
-    const maxLogCitations = Math.log(5000); // Assume max ~5k citations
+    const maxLogCitations = Math.log(MAX_CITATIONS_FOR_SCALE);
 
-    return minSize + (logCitations / maxLogCitations) * (maxSize - minSize);
+    return MIN_SIZE + (logCitations / maxLogCitations) * (MAX_SIZE - MIN_SIZE);
   };
 
   return (
@@ -212,62 +224,66 @@ export default function ConnectedPapersGraph({
           width={dimensions.width}
           height={dimensions.height}
           backgroundColor="rgba(255,255,255,0)"
-          nodeColor={(node: any) => {
+          nodeColor={(node) => {
           const n = node as Node;
           return getNodeColor(n.year, n.isCenter);
         }}
-        nodeVal={(node: any) => {
+        nodeVal={(node) => {
           const n = node as Node;
           return getNodeSize(n.citations, n.isCenter);
         }}
-        linkColor={(link: any) => {
-          const strength = link.strength || 0.5;
-          const isCrossLink = link.source.id && link.target.id &&
-                             link.source.id !== 'center' && link.target.id !== 'center';
+        linkColor={(link) => {
+          const l = link as Link;
+          const strength = l.strength || 0.5;
+          const sourceId = typeof l.source === 'string' ? l.source : (l.source as Node).id;
+          const targetId = typeof l.target === 'string' ? l.target : (l.target as Node).id;
+          const isCrossLink = sourceId !== 'center' && targetId !== 'center';
 
           if (isCrossLink) {
-            // Cross-links: opacity based on strength (0.2 to 0.7)
-            const opacity = 0.2 + (strength * 0.5);
-            return `rgba(120, 140, 170, ${opacity})`;
+            const { OPACITY_MIN, OPACITY_MAX, COLOR_BASE } = GRAPH_LINKS.CROSS;
+            const opacity = OPACITY_MIN + (strength * (OPACITY_MAX - OPACITY_MIN));
+            return COLOR_BASE.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
           } else {
-            // Center links: opacity based on rank strength (0.3 to 0.8)
-            const opacity = 0.3 + (strength * 0.5);
-            return `rgba(160, 170, 190, ${opacity})`;
+            const { OPACITY_MIN, OPACITY_MAX, COLOR_BASE } = GRAPH_LINKS.CENTER;
+            const opacity = OPACITY_MIN + (strength * (OPACITY_MAX - OPACITY_MIN));
+            return COLOR_BASE.replace('rgb', 'rgba').replace(')', `, ${opacity})`);
           }
         }}
-        linkWidth={(link: any) => {
-          const strength = link.strength || 0.5;
-          const isCrossLink = link.source.id && link.target.id &&
-                             link.source.id !== 'center' && link.target.id !== 'center';
+        linkWidth={(link) => {
+          const l = link as Link;
+          const strength = l.strength || 0.5;
+          const sourceId = typeof l.source === 'string' ? l.source : (l.source as Node).id;
+          const targetId = typeof l.target === 'string' ? l.target : (l.target as Node).id;
+          const isCrossLink = sourceId !== 'center' && targetId !== 'center';
 
           if (isCrossLink) {
-            // Cross-links: width 0.8 to 2.0 based on strength
-            return 0.8 + (strength * 1.2);
+            const { WIDTH_MIN, WIDTH_MAX } = GRAPH_LINKS.CROSS;
+            return WIDTH_MIN + (strength * (WIDTH_MAX - WIDTH_MIN));
           } else {
-            // Center links: width 1.0 to 2.5 based on rank
-            return 1.0 + (strength * 1.5);
+            const { WIDTH_MIN, WIDTH_MAX } = GRAPH_LINKS.CENTER;
+            return WIDTH_MIN + (strength * (WIDTH_MAX - WIDTH_MIN));
           }
         }}
         linkDirectionalParticles={0}
         d3AlphaDecay={1} // Stop simulation immediately for fixed positions
         d3VelocityDecay={1}
         cooldownTicks={0}
-        nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+        nodeCanvasObject={(node, ctx: CanvasRenderingContext2D) => {
           const n = node as Node;
           const size = getNodeSize(n.citations, n.isCenter);
           const color = getNodeColor(n.year, n.isCenter);
 
           // Draw shadow
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-          ctx.shadowBlur = 8;
-          ctx.shadowOffsetX = 2;
-          ctx.shadowOffsetY = 2;
+          ctx.shadowColor = GRAPH_SHADOW.COLOR;
+          ctx.shadowBlur = GRAPH_SHADOW.BLUR;
+          ctx.shadowOffsetX = GRAPH_SHADOW.OFFSET_X;
+          ctx.shadowOffsetY = GRAPH_SHADOW.OFFSET_Y;
 
           // Draw outer glow for center node
           if (n.isCenter) {
             ctx.beginPath();
-            ctx.arc(node.x!, node.y!, size + 3, 0, 2 * Math.PI);
-            ctx.fillStyle = 'rgba(168, 85, 247, 0.3)';
+            ctx.arc(node.x!, node.y!, size + GRAPH_NODE.CENTER_GLOW_OFFSET, 0, 2 * Math.PI);
+            ctx.fillStyle = GRAPH_COLORS.CENTER_GLOW;
             ctx.fill();
           }
 
@@ -285,11 +301,11 @@ export default function ConnectedPapersGraph({
 
           // Add border
           if (n.isCenter) {
-            ctx.strokeStyle = '#fbbf24';
+            ctx.strokeStyle = GRAPH_COLORS.CENTER_BORDER;
             ctx.lineWidth = 2.5;
             ctx.stroke();
           } else {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.strokeStyle = GRAPH_COLORS.NODE_BORDER;
             ctx.lineWidth = 1.5;
             ctx.stroke();
           }
@@ -312,13 +328,13 @@ export default function ConnectedPapersGraph({
             ctx.fillText(`#${n.index}`, labelX, labelY);
           }
         }}
-        onNodeClick={(node: any, event: MouseEvent) => {
+        onNodeClick={(node) => {
           const n = node as Node;
           if (n.url && !n.isCenter) {
             window.open(n.url, '_blank');
           }
         }}
-        nodeLabel={(node: any) => {
+        nodeLabel={(node) => {
           const n = node as Node;
           return `${n.name}${n.year ? ` (${n.year})` : ''}${n.citations > 0 ? ` - ${n.citations.toLocaleString()} citations` : ''}`;
         }}

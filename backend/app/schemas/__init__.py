@@ -19,6 +19,7 @@ from app.schemas.paper import (
     RelatedPaperResult,
     RelatedPapersResponse,
     PdfMetadataResponse,
+    ErrorResponse,
 )
 from app.schemas.tag import TagCreate, TagResponse, TagWithCountResponse
 
@@ -42,6 +43,7 @@ __all__ = [
     "RelatedPaperResult",
     "RelatedPapersResponse",
     "PdfMetadataResponse",
+    "ErrorResponse",
     "TagCreate",
     "TagResponse",
     "TagWithCountResponse",

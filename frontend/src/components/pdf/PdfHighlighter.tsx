@@ -113,6 +113,12 @@ export function PdfHighlighter({
   onHighlightAdd,
   onHighlightDelete,
 }: PdfHighlighterProps) {
+  const [scale, setScale] = useState(1.2);
+
+  const zoomIn = () => setScale((s) => Math.min(s + 0.2, 3.0));
+  const zoomOut = () => setScale((s) => Math.max(s - 0.2, 0.6));
+  const resetZoom = () => setScale(1.2);
+
   const saveHighlights = useCallback((newHighlights: HighlightWithComment[]) => {
     setHighlights(newHighlights);
     localStorage.setItem(`pdf-highlights-${paperId}`, JSON.stringify(newHighlights));
@@ -150,37 +156,72 @@ export function PdfHighlighter({
     onHighlightDelete?.(highlightId);
   };
 
-  const scrollToHighlight = (highlightId: string) => {
+  // Scroll to highlight - exported for external use
+  const _scrollToHighlight = useCallback((highlightId: string) => {
     const highlightElement = document.querySelector(`[data-highlight-id="${highlightId}"]`);
     highlightElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
+  }, []);
+
+  // Expose scroll function via window for external access (e.g., highlight list sidebar)
+  useEffect(() => {
+    (window as unknown as { scrollToHighlight?: typeof _scrollToHighlight }).scrollToHighlight = _scrollToHighlight;
+    return () => {
+      delete (window as unknown as { scrollToHighlight?: typeof _scrollToHighlight }).scrollToHighlight;
+    };
+  }, [_scrollToHighlight]);
 
   return (
     <div className="h-full flex flex-col">
-      {/* Info bar */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 border-b text-sm text-gray-600 dark:text-gray-300">
+      {/* Info bar with zoom controls */}
+      <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b text-sm text-gray-600 dark:text-gray-300">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span>Select text to highlight and add comments</span>
-        <span className="ml-auto text-xs text-gray-500">{highlights.length} highlights</span>
+        <span className="text-xs">Select text to highlight</span>
+
+        {/* Zoom controls */}
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={zoomOut}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+            title="Zoom out"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+            </svg>
+          </button>
+          <button
+            onClick={resetZoom}
+            className="px-2 py-0.5 text-xs hover:bg-gray-200 dark:hover:bg-gray-600 rounded min-w-[50px]"
+            title="Reset zoom"
+          >
+            {Math.round(scale * 100)}%
+          </button>
+          <button
+            onClick={zoomIn}
+            className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+            title="Zoom in"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          <span className="ml-2 text-xs text-gray-500">{highlights.length} highlights</span>
+        </div>
       </div>
 
       {/* PDF Viewer */}
       <div className="flex-1 relative overflow-hidden">
-        <PdfLoader url={pdfUrl} beforeLoad={<div className="p-4 text-center">Loading PDF...</div>}>
+        <PdfLoader key={`pdf-${scale}`} url={pdfUrl} beforeLoad={<div className="p-4 text-center">Loading PDF...</div>}>
           {(pdfDocument) => (
             <ReactPdfHighlighter
               pdfDocument={pdfDocument}
+              pdfScaleValue={String(scale)}
               enableAreaSelection={(event) => event.altKey}
               onScrollChange={() => {}}
               scrollRef={() => {}}
-              onSelectionFinished={(
-                position,
-                content,
-                hideTipAndSelection,
-                transformSelection
-              ) => (
+              // eslint-disable-next-line @typescript-eslint/no-unused-vars
+              onSelectionFinished={(position, content, hideTipAndSelection, transformSelection) => (
                 <CommentForm
                   onSubmit={(comment, color) => {
                     addHighlight({ content, position, comment: { text: '', emoji: '' } }, comment, color);
@@ -209,9 +250,6 @@ export function PdfHighlighter({
                     isScrolledTo={isScrolledTo}
                     position={highlight.position}
                     comment={highlight.comment}
-                    style={{
-                      background: colorStyle.background,
-                    }}
                   />
                 ) : (
                   <AreaHighlight

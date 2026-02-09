@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Paper, PaperCreate, PaperUpdate, Category, CATEGORIES } from '@/types';
 import { papersApi } from '@/lib/api';
-import { Tag } from '@/components/ui/Tag';
+import { TagManager } from '@/components/ui/TagManager';
+import { LoadingButton } from '@/components/ui/LoadingButton';
 
 interface PaperFormProps {
   paper?: Paper;
@@ -22,19 +23,6 @@ export function PaperForm({ paper, mode }: PaperFormProps) {
   const [year, setYear] = useState(paper?.year || new Date().getFullYear());
   const [category, setCategory] = useState<Category>(paper?.category || 'other');
   const [tags, setTags] = useState<string[]>(paper?.tags.map((t) => t.name) || []);
-  const [tagInput, setTagInput] = useState('');
-
-  const addTag = () => {
-    const tag = tagInput.trim().toLowerCase();
-    if (tag && !tags.includes(tag)) {
-      setTags([...tags, tag]);
-    }
-    setTagInput('');
-  };
-
-  const removeTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,54 +145,25 @@ export function PaperForm({ paper, mode }: PaperFormProps) {
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Tags
-        </label>
-        <div className="flex gap-2 mb-2">
-          <input
-            type="text"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addTag();
-              }
-            }}
-            placeholder="Add tag and press Enter"
-            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            type="button"
-            onClick={addTag}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
-          >
-            Add
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => (
-            <Tag key={tag} name={tag} onRemove={() => removeTag(tag)} />
-          ))}
-        </div>
-      </div>
+      <TagManager tags={tags} onTagsChange={setTags} />
 
       <div className="flex gap-3">
-        <button
+        <LoadingButton
           type="submit"
-          disabled={loading}
-          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          isLoading={loading}
+          loadingText="Saving..."
+          size="lg"
         >
-          {loading ? 'Saving...' : mode === 'create' ? 'Create Paper' : 'Update Paper'}
-        </button>
-        <button
+          {mode === 'create' ? 'Create Paper' : 'Update Paper'}
+        </LoadingButton>
+        <LoadingButton
           type="button"
+          variant="secondary"
+          size="lg"
           onClick={() => router.back()}
-          className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
         >
           Cancel
-        </button>
+        </LoadingButton>
       </div>
     </form>
   );
