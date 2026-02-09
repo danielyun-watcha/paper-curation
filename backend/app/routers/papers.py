@@ -904,7 +904,9 @@ async def translate_paper(paper_id: str):
 
 @router.post("/{paper_id}/translate-full")
 async def translate_full_paper(paper_id: str):
-    """Translate full paper PDF to Korean using Ollama"""
+    """Translate full paper PDF to Korean using DeepL API"""
+    from app.services.deepl_service import get_deepl_service, DeepLServiceError
+
     repo = get_paper_repository()
     paper = repo.find_by_id(paper_id)
 
@@ -912,20 +914,62 @@ async def translate_full_paper(paper_id: str):
         raise HTTPException(status_code=404, detail="Paper not found")
 
     arxiv_id = paper.get("arxiv_id")
-    paper_url = paper.get("paper_url")
+    pdf_path = paper.get("pdf_path")
 
-    if not arxiv_id and not paper_url:
+    if not arxiv_id and not pdf_path:
         raise HTTPException(status_code=400, detail="No PDF source available for this paper")
 
     pdf_service = get_pdf_service()
+    deepl_service = get_deepl_service()
     ollama_service = get_ollama_service()
+
+    if deepl_service is None:
+        raise HTTPException(status_code=500, detail="DeepL API key not configured")
 
     try:
         # Extract text from PDF
-        paper_text = await pdf_service.get_paper_text(arxiv_id=arxiv_id, paper_url=paper_url)
+        paper_text = await pdf_service.get_paper_text(arxiv_id=arxiv_id, pdf_path=pdf_path)
 
-        # Translate with Ollama (section by section)
-        translated_sections = await ollama_service.translate_full_paper(paper_text)
+        # Parse sections and filter content using Ollama service utilities
+        sections = ollama_service._parse_paper_sections(paper_text)
+
+        # Filter and translate each section with DeepL
+        translated_sections = []
+        for section in sections:
+            name = section.get("name", "")
+            content = section.get("content", "")
+
+            # Skip empty or reference sections
+            if not content.strip() or len(content) < 50:
+                continue
+
+            if name.lower() in ["references", "bibliography", "acknowledgments", "appendix"]:
+                translated_sections.append({
+                    "name": name,
+                    "original": content,
+                    "translated": "[참고문헌 생략]" if "reference" in name.lower() else "[생략]"
+                })
+                continue
+
+            # Filter tables/figures before translation
+            filtered_content = ollama_service._filter_tables_and_figures(content)
+
+            if not filtered_content.strip():
+                continue
+
+            try:
+                translated = await deepl_service.translate(filtered_content)
+                translated_sections.append({
+                    "name": name,
+                    "original": content,
+                    "translated": translated
+                })
+            except DeepLServiceError as e:
+                translated_sections.append({
+                    "name": name,
+                    "original": content,
+                    "translated": f"[번역 실패: {str(e)}]"
+                })
 
         # Save full translation to paper
         repo.update(paper_id, {"full_translation": translated_sections})
@@ -937,7 +981,7 @@ async def translate_full_paper(paper_id: str):
 
     except PdfServiceError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    except OllamaServiceError as e:
+    except DeepLServiceError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
 

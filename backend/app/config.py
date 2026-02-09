@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # API Keys
     semantic_scholar_api_key: Optional[str] = None
+    deepl_api_key: Optional[str] = None
 
     class Config:
         env_file = ".env"

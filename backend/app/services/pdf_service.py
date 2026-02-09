@@ -100,9 +100,23 @@ class PdfService:
         except Exception:
             return None
 
-    async def get_paper_text(self, arxiv_id: Optional[str] = None, paper_url: Optional[str] = None, max_pages: int = 20) -> str:
-        """Get text from a paper (arXiv or direct URL)"""
-        if arxiv_id:
+    async def get_paper_text(
+        self,
+        arxiv_id: Optional[str] = None,
+        paper_url: Optional[str] = None,
+        pdf_path: Optional[str] = None,
+        max_pages: int = 20
+    ) -> str:
+        """Get text from a paper (arXiv, URL, or local file)"""
+        if pdf_path:
+            # Read from local file
+            import os
+            if not os.path.exists(pdf_path):
+                raise PdfServiceError(f"PDF file not found: {pdf_path}")
+            with open(pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+            return self.extract_text(pdf_bytes, max_pages)
+        elif arxiv_id:
             url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
         elif paper_url:
             url = paper_url
