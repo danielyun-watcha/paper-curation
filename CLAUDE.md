@@ -842,3 +842,87 @@ frontend/src/types/index.ts (PdfMetadataResponse 타입)
 ### 알려진 이슈
 1. **PDF 제목 추출 정확도**: PDF metadata가 없거나 첫 페이지 레이아웃이 복잡한 경우 잘못된 제목 추출 가능
 2. **Semantic Scholar 매칭 실패**: 추출된 제목이 부정확하면 Semantic Scholar에서 매칭 실패 → PDF-only 결과 반환
+
+---
+
+## 2026-02-06 (Session 4): Auto Category Prediction Fix
+
+### 개요
+단일 arXiv/DOI import 시 category가 항상 "other"로 설정되던 버그 수정. `predict_category()` 함수를 호출하도록 변경하여 논문 제목/abstract 기반 자동 분류 기능 활성화.
+
+### 문제 분석
+
+#### 증상
+- arXiv URL로 논문 import 시 category가 항상 "other"로 설정됨
+- 예: "Tail-Aware Data Augmentation for Long-Tail Sequential Recommendation" → "other" (예상: "recsys")
+
+#### 원인
+`/api/papers/arxiv` 및 `/api/papers/doi` 엔드포인트에서 `predict_category()` 함수를 호출하지 않음:
+
+```python
+# 변경 전 (papers.py:693)
+"category": request.category,  # request.category 기본값이 "other"
+```
+
+반면 bulk import나 Scholar 검색에서는 `predict_category()`를 호출하고 있었음:
+```python
+# bulk import (papers.py:501)
+category = request.category or predict_category(paper_data.title, paper_data.abstract)
+```
+
+#### 스키마 기본값
+```python
+# schemas/paper.py:39
+class ArxivImportRequest(BaseModel):
+    arxiv_url: str
+    category: Category = Category.OTHER  # ← 기본값 "other"
+```
+
+### 수정 내용
+
+#### 1. arXiv Import (`/api/papers/arxiv`)
+```python
+# 변경 후 (papers.py:676-679)
+# Auto-predict category if not specified (default is "other")
+category = request.category
+if category == Category.OTHER:
+    category = predict_category(paper_data.title, paper_data.abstract)
+```
+
+#### 2. DOI Import (`/api/papers/doi`)
+```python
+# 변경 후 (papers.py:746-749)
+# Auto-predict category if not specified (default is "other")
+category = request.category
+if category == Category.OTHER and abstract:
+    category = predict_category(title, abstract)
+```
+
+### 테스트 결과
+```bash
+# 수정 전
+curl -X POST ".../arxiv" -d '{"arxiv_url": "https://arxiv.org/abs/2601.10933"}'
+# → category: "other"
+
+# 수정 후
+curl -X POST ".../arxiv" -d '{"arxiv_url": "https://arxiv.org/abs/2601.10933"}'
+# → category: "recsys", tags: ["Sequential"]
+```
+
+### 파일 변경 내역
+```
+backend/app/routers/papers.py (MODIFIED)
+  - import_from_arxiv(): predict_category() 호출 추가
+  - import_from_doi(): predict_category() 호출 추가
+```
+
+### Category 자동 분류 키워드 (참고)
+```python
+CATEGORY_KEYWORDS = {
+    "recsys": ["recommendation", "recommender", "collaborative filtering", ...],
+    "nlp": ["language model", "llm", "gpt", "bert", "transformer", ...],
+    "cv": ["image", "vision", "object detection", "segmentation", ...],
+    "rl": ["reinforcement learning", "policy gradient", "q-learning", ...],
+    "ml": ["classification", "regression", "neural network", ...],
+}
+```

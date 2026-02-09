@@ -673,6 +673,11 @@ async def import_from_arxiv(request: ArxivImportRequest):
             detail=f"Paper with arXiv ID {paper_data.arxiv_id} already exists",
         )
 
+    # Auto-predict category if not specified (default is "other")
+    category = request.category
+    if category == Category.OTHER:
+        category = predict_category(paper_data.title, paper_data.abstract)
+
     # Auto-predict tags if none provided
     tag_names = request.tags
     if not tag_names:
@@ -690,7 +695,7 @@ async def import_from_arxiv(request: ArxivImportRequest):
         "arxiv_id": paper_data.arxiv_id,
         "arxiv_url": paper_data.arxiv_url,
         "conference": paper_data.conference,
-        "category": request.category,
+        "category": category,
         "tags": tags,
         "published_at": paper_data.published_at,
         "created_at": now,
@@ -734,6 +739,11 @@ async def import_from_doi(request: DoiImportRequest):
             detail="Title is required. Please provide it manually as the API couldn't fetch it.",
         )
 
+    # Auto-predict category if not specified (default is "other")
+    category = request.category
+    if category == Category.OTHER and abstract:
+        category = predict_category(title, abstract)
+
     # Auto-predict tags if none provided
     tag_names = request.tags
     if not tag_names and abstract:
@@ -753,7 +763,7 @@ async def import_from_doi(request: DoiImportRequest):
         "doi": paper_data.doi,
         "paper_url": paper_data.url,
         "conference": paper_data.conference,
-        "category": request.category,
+        "category": category,
         "tags": tags,
         "published_at": paper_data.published_at,
         "created_at": now,
