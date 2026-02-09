@@ -129,7 +129,7 @@ export default function HomePage() {
   }, [papers, sortBy]);
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6">
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <div className="space-y-4">
           <SearchBar

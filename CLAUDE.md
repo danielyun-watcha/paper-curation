@@ -926,3 +926,164 @@ CATEGORY_KEYWORDS = {
     "ml": ["classification", "regression", "neural network", ...],
 }
 ```
+
+---
+
+## 2026-02-09 (Session 5): DeepL Translation + LaTeX Rendering + Layout Improvements
+
+### 개요
+논문 전체 번역 기능을 Ollama에서 DeepL API로 전환하여 번역 품질 대폭 향상. PDF 텍스트 전처리 개선, 학회 정보 필터링, LaTeX 수식 렌더링, 페이지별 레이아웃 최적화 구현.
+
+### 주요 구현 사항
+
+#### 1. DeepL API 번역 서비스 (`backend/app/services/deepl_service.py`)
+- **인증 방식**: Header 기반 (`Authorization: DeepL-Auth-Key {key}`)
+- **API Endpoint**: `https://api-free.deepl.com/v2/translate` (Free tier)
+- **월간 한도**: 500,000 characters
+- **후처리 기능**: `_clean_translated_text()` - 번역 결과에서 학회 정보/저자명 필터링
+
+```python
+class DeepLService:
+    async def translate(self, text: str, target_lang: str = "KO") -> str:
+        response = await client.post(
+            self.API_URL,
+            headers={"Authorization": f"DeepL-Auth-Key {self.api_key}"},
+            json={"text": [text], "target_lang": target_lang}
+        )
+        translated = translations[0].get("text", "")
+        return self._clean_translated_text(translated)
+```
+
+#### 2. PDF 텍스트 전처리 개선 (`backend/app/services/ollama_service.py`)
+- **`_clean_pdf_text()`**: PDF 추출 시 깨진 줄바꿈 복원
+  - 짧은 줄 자동 결합 (80자 미만)
+  - 하이픈 단어 분리 복원 (`recommen-\ndation` → `recommendation`)
+  - 소문자로 시작하는 줄 이전 문장과 결합
+  - 섹션 헤더 인식 및 보존
+
+- **`_filter_metadata_noise()`**: 학회/저자 정보 필터링 강화
+  ```python
+  skip_patterns = [
+      r"(WWW|KDD|SIGIR|AAAI|ICML|NeurIPS|...) *['\"]?\d{2}",
+      r"(January|February|...|December)\s+\d+.*\d{4}",
+      r"(Sydney|Toronto|New York|...).*\d{4}",
+      r"^[A-Z][a-z]+\s+(and|&)\s+[A-Z][a-z]+,?\s*(et\s+al\.?)?$",
+  ]
+  ```
+
+#### 3. 번역 후 필터링 (`backend/app/services/deepl_service.py`)
+- **`_clean_translated_text()`**: 한국어 번역 결과 정리
+  ```python
+  skip_patterns = [
+      r"\d{4}년\s+\d{1,2}월\s+\d{1,2}일",  # 한국어 날짜
+      r"(호주|미국|영국|...) (시드니|토론토|...)",  # 한국어 도시명
+      r"^[가-힣]+\s*(and|와|과)\s*[가-힣]+.*et\s+al",  # 저자명
+  ]
+  ```
+
+#### 4. LaTeX 수식 렌더링 (`frontend/src/components/LatexText.tsx`)
+- **KaTeX 라이브러리** 사용
+- **지원 문법**:
+  - Inline: `$...$`, `\(...\)`
+  - Display: `$$...$$`, `\[...\]`
+- **Study 페이지** 번역/요약에 적용
+
+```tsx
+export function LatexText({ text }: { text: string }) {
+  // Regex로 LaTeX 패턴 감지
+  const latexRegex = /(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$)/g;
+
+  // KaTeX로 렌더링
+  const html = katex.renderToString(latex, {
+    throwOnError: false,
+    displayMode: isDisplay,
+  });
+
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+}
+```
+
+#### 5. 페이지별 레이아웃 최적화
+- **layout.tsx**: `max-width` 제거 (페이지별 개별 설정)
+- **Home (page.tsx)**: `max-w-7xl` (기존 사이즈)
+- **Study (study/layout.tsx)**: `max-w-[1444px]` (PDF 2단 컬럼 100% 표시)
+- **Search**: 기존 동적 너비 유지 (`max-w-4xl` / `max-w-7xl`)
+
+#### 6. PDF.js 에러 처리 (`frontend/src/components/pdf/PdfHighlighter.tsx`)
+- **문제**: `this[#editorTypes] is not iterable` 에러 (pdfjs-dist 버그)
+- **해결**:
+  - `console.error` 필터링
+  - `window.error` 이벤트 억제
+  - `PdfErrorBoundary` 컴포넌트로 에러 격리
+
+```typescript
+// Suppress PDF.js annotation editor errors
+window.addEventListener('error', (event) => {
+  if (event.message?.includes('#editorTypes')) {
+    event.preventDefault();
+    return false;
+  }
+});
+```
+
+### 환경 변수
+```env
+# backend/.env
+DEEPL_API_KEY=c764687c-0d6a-4fc5-b217-0a9ee30eedc7:fx
+```
+
+### 파일 변경 내역
+```
+backend/app/services/deepl_service.py (NEW)
+  - DeepL API 번역 서비스
+  - Header 기반 인증
+  - 번역 후 필터링
+
+backend/app/services/ollama_service.py (MODIFIED)
+  - _clean_pdf_text(): PDF 텍스트 전처리
+  - _filter_metadata_noise(): 학회 정보 필터링 강화
+
+backend/app/config.py (MODIFIED)
+  - deepl_api_key 필드 추가
+
+backend/app/routers/papers.py (MODIFIED)
+  - translate-full 엔드포인트 DeepL 사용
+
+frontend/src/components/LatexText.tsx (NEW)
+  - KaTeX 기반 LaTeX 렌더링 컴포넌트
+
+frontend/src/components/pdf/PdfHighlighter.tsx (MODIFIED)
+  - PDF.js 에러 억제
+  - PdfErrorBoundary 추가
+
+frontend/src/app/layout.tsx (MODIFIED)
+  - max-width 제거 (페이지별 설정)
+
+frontend/src/app/page.tsx (MODIFIED)
+  - max-w-7xl 추가
+
+frontend/src/app/study/layout.tsx (NEW)
+  - max-w-[1444px] Study 전용 레이아웃
+
+frontend/package.json (MODIFIED)
+  - katex, react-katex 의존성 추가
+```
+
+### 의존성 추가
+```json
+{
+  "katex": "^0.16.x",
+  "react-katex": "^3.x"
+}
+```
+
+### 알려진 이슈
+1. **DeepL 월간 한도**: Free tier 500,000자 제한
+2. **PDF 텍스트 추출**: 복잡한 레이아웃(다단, 표 포함)에서 일부 누락 가능
+3. **LaTeX 호환성**: 일부 복잡한 수식 패키지 미지원
+
+### 사용 방법
+1. Study 페이지에서 논문 선택
+2. "Translate" 버튼 클릭 → DeepL API로 전체 번역
+3. 수식은 자동으로 LaTeX 렌더링
+4. 학회 정보/저자명은 자동 필터링

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Paper, TranslationSection } from '@/types';
 import { papersApi } from '@/lib/api';
 import type { HighlightWithComment } from '@/components/pdf/PdfHighlighter';
+import { LatexText } from '@/components/LatexText';
 
 // Dynamically import to avoid SSR issues with PDF.js
 const PdfHighlighter = lazy(() => import('@/components/pdf/PdfHighlighter').then(m => ({ default: m.PdfHighlighter })));
@@ -530,9 +531,9 @@ function StudyPageContent() {
                     </button>
                     {showSummaryContent && (
                       <div className="p-3 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-800">
-                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                          {fullSummary}
-                        </p>
+                        <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          <LatexText text={fullSummary} />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -588,9 +589,9 @@ function StudyPageContent() {
                           </button>
                           {expandedSections[index] && (
                             <div className="p-3 bg-white dark:bg-gray-800 border-t border-green-200 dark:border-green-800">
-                              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                {section.translated}
-                              </p>
+                              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                <LatexText text={section.translated} />
+                              </div>
                             </div>
                           )}
                         </div>

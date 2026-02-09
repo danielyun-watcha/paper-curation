@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Component, ReactNode } from 'react';
 import {
   PdfLoader,
   PdfHighlighter as ReactPdfHighlighter,
@@ -10,6 +10,59 @@ import {
 } from 'react-pdf-highlighter';
 import type { IHighlight, NewHighlight, Content, ScaledPosition } from 'react-pdf-highlighter';
 import 'react-pdf-highlighter/dist/style.css';
+
+// Suppress PDF.js annotation editor errors (known issue with pdfjs-dist)
+if (typeof window !== 'undefined') {
+  const originalError = console.error;
+  console.error = (...args) => {
+    const msg = args[0]?.toString?.() || '';
+    if (msg.includes('#editorTypes') || msg.includes('is not iterable')) {
+      return; // Suppress this specific error
+    }
+    originalError.apply(console, args);
+  };
+
+  // Also suppress unhandled errors from PDF.js
+  window.addEventListener('error', (event) => {
+    if (event.message?.includes('#editorTypes') || event.message?.includes('is not iterable')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
+    }
+  });
+}
+
+// Error boundary for PDF viewer
+class PdfErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Ignore PDF.js annotation editor errors
+    if (error.message?.includes('#editorTypes')) {
+      this.setState({ hasError: false });
+      return;
+    }
+    console.error('PDF Error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 text-center text-red-500">
+          PDF 로딩 중 오류가 발생했습니다. 새로고침해주세요.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // PDF.js worker is managed by react-pdf-highlighter internally
 
@@ -212,6 +265,7 @@ export function PdfHighlighter({
 
       {/* PDF Viewer */}
       <div className="flex-1 relative overflow-hidden">
+        <PdfErrorBoundary>
         <PdfLoader key={`pdf-${scale}`} url={pdfUrl} beforeLoad={<div className="p-4 text-center">Loading PDF...</div>}>
           {(pdfDocument) => (
             <ReactPdfHighlighter
@@ -306,6 +360,7 @@ export function PdfHighlighter({
             />
           )}
         </PdfLoader>
+        </PdfErrorBoundary>
       </div>
     </div>
   );

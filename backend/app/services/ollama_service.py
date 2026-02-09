@@ -247,12 +247,18 @@ Korean:"""
             r'^(ISBN|DOI|ISSN)\s*[\d\-]',  # Identifiers
             r'^arXiv:\d+\.\d+',  # arXiv ID lines
             r'^\s*permissions@acm\.org',  # ACM permissions
-            r"^(KDD|SIGKDD|SIGIR|WWW|AAAI|ICML|NeurIPS|ICLR|ACL|EMNLP|NAACL|CVPR|ICCV|ECCV)\s*['\"]?\d{2}",  # Conference references
+            r"^(KDD|SIGKDD|SIGIR|WWW|AAAI|ICML|NeurIPS|ICLR|ACL|EMNLP|NAACL|CVPR|ICCV|ECCV|CIKM|RecSys|WSDM)\s*['\"]?\d{2}",  # Conference references
             r"^\d{4}\s+(ACM|IEEE)",  # Year + Publisher
             r"^Proceedings\s+of",  # Proceedings headers
             r"^In\s+Proceedings",  # "In Proceedings of..."
-            r"August\s+\d+.*\d{4}",  # Date patterns like "August 3-7, 2025"
+            r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d+.*\d{4}",  # Date patterns
             r"^\d+\s+(pages?|pp\.)",  # Page numbers
+            # Conference venue/date lines (English)
+            r"(Sydney|Toronto|New York|Seattle|Vancouver|London|Paris|Singapore|Barcelona|San Francisco|Beijing|Shanghai).*\d{4}",
+            r"\d{4}년\s+\d{1,2}월",  # Korean date patterns (translated)
+            # Author name patterns like "Ye and Guo, et al."
+            r"^[A-Z][a-z]+\s+(and|&)\s+[A-Z][a-z]+,?\s*(et\s+al\.?)?$",
+            r",\s*et\s+al\.\s*$",  # Lines ending with "et al."
         ]
 
         in_author_block = False
@@ -379,9 +385,144 @@ Korean:"""
 
         return result.strip()
 
+    def _clean_pdf_text(self, text: str) -> str:
+        """Clean up PDF extracted text by fixing broken lines and artifacts."""
+        import re
+
+        lines = text.split('\n')
+        paragraphs = []
+        current_para = []
+
+        # Section header patterns
+        section_header_patterns = [
+            r'^(Abstract|ABSTRACT)\s*$',
+            r'^(\d+\.?\s*)?(Introduction|INTRODUCTION)\s*$',
+            r'^(\d+\.?\s*)?(Related\s+Work|RELATED\s+WORK)\s*$',
+            r'^(\d+\.?\s*)?(Method|METHODS?|Methodology|METHODOLOGY)\s*$',
+            r'^(\d+\.?\s*)?(Experiment|EXPERIMENTS?|Evaluation)\s*$',
+            r'^(\d+\.?\s*)?(Conclusion|CONCLUSIONS?)\s*$',
+            r'^(\d+\.?\s*)?(Reference|REFERENCES?)\s*$',
+            r'^(\d+\.?\s*)?(Appendix|APPENDIX)\s*$',
+            r'^(\d+\.?\s*)?(Acknowledgment|ACKNOWLEDGMENTS?)\s*$',
+            r'^(\d+\.?\s*)?(Discussion|DISCUSSION)\s*$',
+            r'^(\d+\.?\s*)?(Results|RESULTS)\s*$',
+            r'^(\d+\.?\s*)?(Background|BACKGROUND)\s*$',
+            r'^(\d+\.?\s*)?(Preliminar|PRELIMINAR)',
+            r'^(\d+\.?\s*)?(Analysis|ANALYSIS)\s*$',
+            r'^(\d+\.?\s*)?(Ablation|ABLATION)\s*$',
+        ]
+
+        def is_section_header(line: str) -> bool:
+            for pattern in section_header_patterns:
+                if re.match(pattern, line.strip(), re.IGNORECASE):
+                    return True
+            return False
+
+        def should_join(prev_line: str, curr_line: str) -> bool:
+            """Determine if two lines should be joined."""
+            if not prev_line or not curr_line:
+                return False
+
+            prev = prev_line.strip()
+            curr = curr_line.strip()
+
+            if not prev or not curr:
+                return False
+
+            # Don't join if previous line ends with proper sentence end
+            if prev[-1] in '.!?:':
+                # But still join if current line starts lowercase (continuation)
+                if curr[0].islower():
+                    return True
+                return False
+
+            # Join if previous line ends with hyphen (word break)
+            if prev.endswith('-'):
+                return True
+
+            # Join if line is short (likely broken mid-sentence)
+            if len(prev) < 80:
+                return True
+
+            # Join if current line starts with lowercase
+            if curr[0].islower():
+                return True
+
+            # Join if current starts with common continuation patterns
+            if re.match(r'^(and|or|but|that|which|where|when|while|with|for|to|of|in|on|at|by|from|as|is|are|was|were|has|have|had|can|could|will|would|may|might)\b', curr, re.IGNORECASE):
+                return True
+
+            return False
+
+        for line in lines:
+            stripped = line.strip()
+
+            # Empty line = paragraph break
+            if not stripped:
+                if current_para:
+                    # Join all lines in current paragraph with space
+                    para_text = ' '.join(current_para)
+                    # Clean up multiple spaces
+                    para_text = re.sub(r'\s+', ' ', para_text)
+                    # Fix hyphenated word breaks
+                    para_text = re.sub(r'(\w)- (\w)', r'\1\2', para_text)
+                    paragraphs.append(para_text)
+                    current_para = []
+                continue
+
+            # Section header = new paragraph
+            if is_section_header(stripped):
+                if current_para:
+                    para_text = ' '.join(current_para)
+                    para_text = re.sub(r'\s+', ' ', para_text)
+                    para_text = re.sub(r'(\w)- (\w)', r'\1\2', para_text)
+                    paragraphs.append(para_text)
+                    current_para = []
+                paragraphs.append("")  # blank before header
+                paragraphs.append(stripped)
+                paragraphs.append("")  # blank after header
+                continue
+
+            # Check if we should join with previous line or start new
+            if current_para:
+                prev_line = current_para[-1]
+                if should_join(prev_line, stripped):
+                    # Join with previous, handling hyphen breaks
+                    if prev_line.endswith('-'):
+                        current_para[-1] = prev_line[:-1] + stripped
+                    else:
+                        current_para.append(stripped)
+                else:
+                    # End current paragraph and start new
+                    para_text = ' '.join(current_para)
+                    para_text = re.sub(r'\s+', ' ', para_text)
+                    para_text = re.sub(r'(\w)- (\w)', r'\1\2', para_text)
+                    paragraphs.append(para_text)
+                    current_para = [stripped]
+            else:
+                current_para.append(stripped)
+
+        # Don't forget the last paragraph
+        if current_para:
+            para_text = ' '.join(current_para)
+            para_text = re.sub(r'\s+', ' ', para_text)
+            para_text = re.sub(r'(\w)- (\w)', r'\1\2', para_text)
+            paragraphs.append(para_text)
+
+        # Join paragraphs with double newlines
+        result = '\n\n'.join(p for p in paragraphs if p or p == "")
+
+        # Clean up excessive blank lines
+        result = re.sub(r'\n{3,}', '\n\n', result)
+
+        return result.strip()
+
     def _parse_paper_sections(self, text: str) -> list[dict]:
         """Parse paper text into sections"""
         import re
+
+        # First, clean up the PDF text
+        text = self._clean_pdf_text(text)
 
         sections = []
 
