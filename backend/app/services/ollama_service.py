@@ -176,22 +176,21 @@ Korean Translation:"""
         except Exception:
             return False
 
-    SECTION_TRANSLATION_PROMPT = """You are a professional translator. Translate the following research paper section to Korean.
+    SECTION_TRANSLATION_PROMPT = """Translate the following academic paper text to Korean.
 
-CRITICAL RULES:
-1. Translate ONLY the text provided below - do not add, expand, or generate any new content
-2. If the content seems incomplete, translate only what is given - do NOT continue or complete it
-3. Keep technical terms in English with Korean explanation in parentheses if needed
-4. Preserve mathematical equations and formulas as-is (do not translate LaTeX/math notation)
-5. Output ONLY the Korean translation, nothing else
-6. Do NOT add section numbers, labels, or headers that don't exist in the original
+RULES:
+- Translate the given text accurately and naturally into Korean
+- Keep technical terms in English (add Korean explanation in parentheses if helpful)
+- Preserve equations, formulas, and citations [1], [2] as-is
+- Do NOT add any content not in the original text
+- Do NOT add section headers, labels, or numbering
+- Do NOT output anything except the Korean translation
+- If text ends mid-sentence, just translate what is given
 
-Section: {section_name}
-
-Content:
+Text to translate:
 {text}
 
-Korean Translation:"""
+Korean:"""
 
     def _clean_translation(self, text: str) -> str:
         """Clean up translated text to remove hallucinated content."""
@@ -203,13 +202,16 @@ Korean Translation:"""
         for line in lines:
             line_stripped = line.strip()
 
+            # Skip chunk/part markers like "방법 (3/3)", "서론 (1/2)"
+            if re.match(r'^[\w\s]+(하|론|록|법|과|론)\s*\(\d+/\d+\)', line_stripped):
+                continue
             # Skip lines that indicate hallucinated section markers
             if re.match(r'^\*?\*?초록\s*\(\d+/\d+\)', line_stripped):
                 continue
             if re.match(r'^\*?\*?(Section|Part|번역)\s*\d+', line_stripped, re.IGNORECASE):
                 continue
             # Skip lines that look like the model is starting a new section
-            if re.match(r'^(Korean Translation|영어 원문|Original|번역문):', line_stripped):
+            if re.match(r'^(Korean Translation|영어 원문|Original|번역문|Korean|번역):?\s*$', line_stripped):
                 continue
             # Skip template/placeholder text (hallucination)
             if re.search(r'\[.*?(목적|내용|요약|설명|언급|제시|작성).*?\]', line_stripped):
@@ -218,6 +220,9 @@ Korean Translation:"""
             if re.match(r"^(KDD|SIGKDD|SIGIR|WWW|AAAI|ICML|NeurIPS|ICLR|ACL|EMNLP)\s*['\"]?\d{2}", line_stripped):
                 continue
             if re.search(r'\d{1,2}월\s+\d{1,2}일.*?(토론토|뉴욕|시애틀|밴쿠버|런던|파리|시드니)', line_stripped):
+                continue
+            # Skip lines that are just ** markers
+            if re.match(r'^\*\*[\w\s]+\*\*\s*$', line_stripped) and len(line_stripped) < 20:
                 continue
 
             cleaned_lines.append(line)
@@ -298,9 +303,12 @@ Korean Translation:"""
         in_table_or_figure = False
         blank_line_count = 0
 
-        # Pattern for table data: line with multiple numbers/decimals separated by whitespace
-        table_data_pattern = re.compile(r'^\s*[\w\-]+\s+\d+\.?\d*\s+\d+\.?\d*')  # "Model 0.123 0.456..."
-        header_row_pattern = re.compile(r'^\s*(Model|Dataset|Method|Metric|NG@|HR@|MRR|AUC)', re.IGNORECASE)
+        # Pattern for table data: lines with multiple numbers/decimals
+        table_data_pattern = re.compile(r'^\s*[\w\-\(\)]+\s+\d+\.?\d*\s+\d+\.?\d*')  # "Model(2019) 0.123 0.456..."
+        numeric_heavy_pattern = re.compile(r'(\d+\.?\d*\s+){3,}')  # 3+ consecutive numbers
+        header_row_pattern = re.compile(r'^\s*(Model|Dataset|Method|Metric|NG@|HR@|MRR|AUC|Recall|Precision|NDCG|F1)', re.IGNORECASE)
+        # Pattern for model names with years like KGCN(2019), KGAT(2019)
+        model_year_pattern = re.compile(r'^[A-Z]+[a-z]*[\-]?[A-Z]*\s*\(\d{4}\)\s+\d')
 
         for line in lines:
             line_stripped = line.strip()
@@ -351,6 +359,15 @@ Korean Translation:"""
                 # Skip this line (still in table/figure)
                 continue
 
+            # Check for table-like data even outside explicit table sections
+            if model_year_pattern.match(line_stripped):
+                continue
+            if numeric_heavy_pattern.search(line_stripped) and len(line_stripped) < 200:
+                # Line has many numbers and is short - likely table data
+                continue
+            if table_data_pattern.match(line_stripped):
+                continue
+
             # Not in table/figure - keep the line
             filtered_lines.append(line)
 
@@ -372,13 +389,17 @@ Korean Translation:"""
         section_patterns = [
             r'^(Abstract|ABSTRACT)\s*$',
             r'^(\d+\.?\s*)?(Introduction|INTRODUCTION)\s*$',
+            r'^(\d+\.?\s*)?(Preliminary|PRELIMINARY|Preliminaries|PRELIMINARIES|Problem\s+(Definition|Statement|Formulation))\s*$',
+            r'^(\d+\.?\s*)?(Motivation|MOTIVATION)\s*$',
             r'^(\d+\.?\s*)?(Related\s+Work|RELATED\s+WORK|Background|BACKGROUND|Literature\s+Review)\s*$',
-            r'^(\d+\.?\s*)?(Method|METHODS?|Methodology|METHODOLOGY|Approach|APPROACH|Proposed\s+Method)\s*$',
-            r'^(\d+\.?\s*)?(Experiment|EXPERIMENTS?|Evaluation|EVALUATION|Results|RESULTS)\s*$',
+            r'^(\d+\.?\s*)?(Method|METHODS?|Methodology|METHODOLOGY|Approach|APPROACH|Proposed\s+Method|Our\s+Method|Model|MODEL)\s*$',
+            r'^(\d+\.?\s*)?(Experiment|EXPERIMENTS?|Evaluation|EVALUATION|Results|RESULTS|Empirical\s+Study)\s*$',
+            r'^(\d+\.?\s*)?(Analysis|ANALYSIS|Ablation|ABLATION)\s*$',
             r'^(\d+\.?\s*)?(Discussion|DISCUSSION)\s*$',
-            r'^(\d+\.?\s*)?(Conclusion|CONCLUSIONS?|Summary|SUMMARY)\s*$',
+            r'^(\d+\.?\s*)?(Conclusion|CONCLUSIONS?|Summary|SUMMARY|Future\s+Work)\s*$',
             r'^(\d+\.?\s*)?(Acknowledgment|ACKNOWLEDGMENTS?)\s*$',
             r'^(\d+\.?\s*)?(Reference|REFERENCES?|Bibliography)\s*$',
+            r'^(\d+\.?\s*)?(Appendix|APPENDIX)\s*$',
         ]
 
         combined_pattern = '|'.join(f'({p})' for p in section_patterns)
@@ -479,12 +500,8 @@ Korean Translation:"""
         self, client: httpx.AsyncClient, section_name: str, text: str, chunk_num: int = 0, total_chunks: int = 1
     ) -> str:
         """Translate a single chunk of text."""
-        chunk_info = f" (Part {chunk_num + 1}/{total_chunks})" if total_chunks > 1 else ""
-
-        prompt = self.SECTION_TRANSLATION_PROMPT.format(
-            section_name=f"{section_name}{chunk_info}",
-            text=text
-        )
+        # Don't include chunk info in prompt - just translate the text
+        prompt = self.SECTION_TRANSLATION_PROMPT.format(text=text)
 
         response = await client.post(
             self.OLLAMA_API_URL,
@@ -493,9 +510,9 @@ Korean Translation:"""
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.3,
-                    "num_predict": 4096,
-                    "stop": ["Section:", "Content:", "Korean Translation:", "---", "(1/", "(2/", "초록 ("],
+                    "temperature": 0.2,
+                    "num_predict": 6000,
+                    "stop": ["Text to translate:", "Korean:", "---", "\n\n\n"],
                 }
             },
         )
@@ -526,7 +543,7 @@ Korean Translation:"""
                     })
                     continue
 
-                if section["name"].lower() in ["references", "bibliography", "acknowledgments"]:
+                if section["name"].lower() in ["references", "bibliography", "acknowledgments", "appendix"]:
                     translated_sections.append({
                         "name": section["name"],
                         "original": section["content"],
@@ -540,8 +557,8 @@ Korean Translation:"""
                     # Filter out tables and figures before translation
                     filtered_content = self._filter_tables_and_figures(content)
 
-                    # Split long sections into chunks
-                    chunks = self._split_into_chunks(filtered_content, max_chars=3000)
+                    # Split long sections into chunks (5000 chars ~ 1500 tokens)
+                    chunks = self._split_into_chunks(filtered_content, max_chars=5000)
                     translated_parts = []
 
                     for i, chunk in enumerate(chunks):
