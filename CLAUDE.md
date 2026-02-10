@@ -19,7 +19,7 @@
 - **Backend**: FastAPI (Python 3.9+)
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
 - **Database**: JSON 파일 (`backend/data/papers.json`)
-- **External APIs**: Semantic Scholar, Google Scholar, arXiv, Crossref
+- **External APIs**: Semantic Scholar, Google Scholar, arXiv, Crossref, DeepL (번역)
 
 ## 프로젝트 구조
 
@@ -37,6 +37,7 @@ paper-curation/
 │   │   │   ├── semantic_scholar_service.py # Semantic Scholar API
 │   │   │   ├── arxiv_service.py           # arXiv API
 │   │   │   ├── crossref_service.py        # Crossref DOI 검색
+│   │   │   ├── deepl_service.py           # DeepL 번역 API
 │   │   │   └── cache_service.py           # 인메모리 캐시 (API 응답)
 │   │   ├── schemas/
 │   │   │   └── paper.py         # Pydantic 모델 (API 스키마)
@@ -1084,6 +1085,104 @@ frontend/package.json (MODIFIED)
 
 ### 사용 방법
 1. Study 페이지에서 논문 선택
-2. "Translate" 버튼 클릭 → DeepL API로 전체 번역
-3. 수식은 자동으로 LaTeX 렌더링
-4. 학회 정보/저자명은 자동 필터링
+2. PDF에서 텍스트 드래그 선택 → "번역하기" 버튼 클릭
+3. Summary 기능으로 논문 요약 (Ollama)
+
+---
+
+## 2026-02-10 (Session 6): Drag-to-Translate + PDF UX Improvements
+
+### 개요
+전체 논문 번역 기능을 제거하고, PDF에서 텍스트를 드래그 선택하여 번역하는 방식으로 변경. PDF 뷰어 UX 개선 (100% 줌, 맨 위부터 시작).
+
+### 주요 변경 사항
+
+#### 1. 전체 번역 기능 제거
+- Study 페이지에서 "Translate" 버튼 및 관련 UI 제거
+- `fullTranslation`, `fullTranslating` 등 상태 제거
+- papers.json에서 기존 `full_translation` 데이터 제거
+
+#### 2. 드래그 선택 번역 구현 (`PdfHighlighter.tsx`)
+- PDF에서 텍스트 선택 시 팝업에 "번역하기" 버튼 표시
+- DeepL API (`/api/papers/translate-text`) 호출
+- 번역 결과를 녹색 박스로 표시
+- 이벤트 버블링 방지 (`e.stopPropagation()`)
+
+```typescript
+const handleTranslate = async (e: React.MouseEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+  // DeepL API 호출
+  const response = await fetch('/api/papers/translate-text', {
+    method: 'POST',
+    body: JSON.stringify({ text: selectedText }),
+  });
+  const data = await response.json();
+  setTranslation(data.translated);
+};
+```
+
+#### 3. PDF 뷰어 UX 개선
+- **줌 레벨**: 120% → 100%로 변경
+- **초기 스크롤**: PDF 로드 시 맨 위(1페이지)부터 시작
+- **CSS 정리**: 과도한 flex 레이아웃 제거 (PDF 표시 버그 수정)
+
+```typescript
+// PDF 로드 시 맨 위로 스크롤
+scrollRef={(scrollTo) => {
+  if (!hasScrolledRef.current) {
+    hasScrolledRef.current = true;
+    setTimeout(() => scrollTo({ pageNumber: 1, top: 0 }), 150);
+  }
+}}
+```
+
+#### 4. DeepL 서비스 정리 (`deepl_service.py`)
+- `_clean_translated_text()` 메서드 제거 (과도한 필터링으로 번역 결과 삭제 버그)
+- `translate_sections()` 메서드 제거 (전체 번역용, 미사용)
+- `import re` 제거
+- 간결한 단일 `translate()` 메서드만 유지
+
+**문제 해결**: "Huawei", "Google" 등 키워드가 포함된 문장이 번역되지 않던 버그
+- 원인: `_clean_translated_text()`가 회사명이 포함된 모든 라인 삭제
+- 해결: 필터링 로직 완전 제거
+
+### 파일 변경 내역
+```
+backend/app/services/deepl_service.py (SIMPLIFIED)
+  - _clean_translated_text() 제거
+  - translate_sections() 제거
+  - 86줄 → 110줄로 감소
+
+backend/app/routers/papers.py (MODIFIED)
+  - translate-text 엔드포인트 유지
+
+frontend/src/app/study/page.tsx (SIMPLIFIED)
+  - 전체 번역 UI 제거
+  - Summary 기능만 유지
+
+frontend/src/components/pdf/PdfHighlighter.tsx (MODIFIED)
+  - 드래그 선택 번역 기능
+  - PDF 초기 스크롤 위치 수정
+  - 줌 레벨 100%
+
+frontend/src/app/globals.css (MODIFIED)
+  - PDF 센터링 CSS 간소화
+
+backend/data/papers.json (MODIFIED)
+  - full_translation 필드 제거
+```
+
+### API 엔드포인트
+```
+POST /api/papers/translate-text
+  Request:  { "text": "영어 텍스트", "target_lang": "KO" }
+  Response: { "original": "영어 텍스트", "translated": "한국어 번역" }
+```
+
+### 사용 방법
+1. Study 페이지에서 논문 PDF 열기
+2. 번역하고 싶은 텍스트 드래그 선택
+3. 팝업에서 "번역하기" 버튼 클릭
+4. 녹색 박스에 한국어 번역 표시
+5. (선택) 하이라이트 색상 선택 후 "Highlight" 버튼으로 저장

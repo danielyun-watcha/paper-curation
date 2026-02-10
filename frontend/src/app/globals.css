@@ -25,3 +25,14 @@ body {
     text-wrap: balance;
   }
 }
+
+/* PDF Viewer centering - only center the page content, not the container */
+.pdfViewer {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.pdfViewer .page {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}

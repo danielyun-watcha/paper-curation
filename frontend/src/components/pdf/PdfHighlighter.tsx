@@ -95,16 +95,20 @@ const HIGHLIGHT_COLORS: Record<string, { background: string; border: string }> =
   purple: { background: 'rgba(196, 181, 253, 0.6)', border: '#8b5cf6' },
 };
 
-// Comment Input Component
+// Comment Input Component with Translation
 function CommentForm({
   onSubmit,
   onCancel,
+  selectedText,
 }: {
   onSubmit: (comment: string, color: string) => void;
   onCancel: () => void;
+  selectedText?: string;
 }) {
   const [comment, setComment] = useState('');
   const [color, setColor] = useState('yellow');
+  const [translating, setTranslating] = useState(false);
+  const [translation, setTranslation] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -116,45 +120,126 @@ function CommentForm({
     onSubmit(comment, color);
   };
 
+  const handleTranslate = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log('Translate clicked, selectedText:', selectedText);
+
+    if (!selectedText?.trim() || translating) {
+      console.log('No text to translate or already translating');
+      setTranslation('[선택된 텍스트가 없습니다]');
+      return;
+    }
+
+    setTranslating(true);
+    setTranslation(null);
+
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers/translate-text`;
+      console.log('Calling translate API:', apiUrl);
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: selectedText }),
+      });
+
+      console.log('API response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Translation API error:', response.status, errorText);
+        throw new Error('Translation failed');
+      }
+
+      const data = await response.json();
+      console.log('Translation result:', data);
+      setTranslation(data.translated);
+    } catch (err) {
+      console.error('Translation error:', err);
+      setTranslation('[번역 실패]');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-xl p-3 w-72 border">
-      <div className="flex gap-1 mb-2">
-        {Object.entries(HIGHLIGHT_COLORS).map(([c, { border }]) => (
+    <div className="bg-white rounded-lg shadow-xl p-3 w-80 border max-h-96 overflow-y-auto">
+      {/* Translation Section */}
+      {selectedText && (
+        <div className="mb-3 pb-3 border-b border-gray-200">
           <button
-            key={c}
             type="button"
-            onClick={() => setColor(c)}
-            className={`w-6 h-6 rounded border-2 transition-all ${
-              color === c ? 'scale-110 border-gray-800' : 'border-transparent'
-            }`}
-            style={{ backgroundColor: border }}
-          />
-        ))}
-      </div>
-      <textarea
-        ref={inputRef}
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Add a comment (optional)..."
-        className="w-full px-2 py-1 text-sm border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-        rows={2}
-      />
-      <div className="flex gap-2 mt-2">
-        <button
-          type="submit"
-          className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Save
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+            onClick={handleTranslate}
+            disabled={translating}
+            className="w-full px-3 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+          >
+            {translating ? (
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                번역 중...
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                </svg>
+                번역하기
+              </>
+            )}
+          </button>
+          {translation && (
+            <div className="mt-2 p-2 bg-green-50 rounded text-sm text-gray-700 whitespace-pre-wrap">
+              {translation}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Highlight Section */}
+      <form onSubmit={handleSubmit}>
+        <div className="flex gap-1 mb-2">
+          {Object.entries(HIGHLIGHT_COLORS).map(([c, { border }]) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(c)}
+              className={`w-6 h-6 rounded border-2 transition-all ${
+                color === c ? 'scale-110 border-gray-800' : 'border-transparent'
+              }`}
+              style={{ backgroundColor: border }}
+            />
+          ))}
+        </div>
+        <textarea
+          ref={inputRef}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="Add a comment (optional)..."
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+          rows={2}
+        />
+        <div className="flex gap-2 mt-2">
+          <button
+            type="submit"
+            className="flex-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Highlight
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -166,11 +251,18 @@ export function PdfHighlighter({
   onHighlightAdd,
   onHighlightDelete,
 }: PdfHighlighterProps) {
-  const [scale, setScale] = useState(1.2);
+  const [scale, setScale] = useState(1.0);
+  const scrollToRef = useRef<((highlight: { pageNumber: number; top?: number }) => void) | null>(null);
+  const hasScrolledRef = useRef(false);
 
   const zoomIn = () => setScale((s) => Math.min(s + 0.2, 3.0));
   const zoomOut = () => setScale((s) => Math.max(s - 0.2, 0.6));
-  const resetZoom = () => setScale(1.2);
+  const resetZoom = () => setScale(1.0);
+
+  // Reset scroll flag when PDF URL changes
+  useEffect(() => {
+    hasScrolledRef.current = false;
+  }, [pdfUrl]);
 
   const saveHighlights = useCallback((newHighlights: HighlightWithComment[]) => {
     setHighlights(newHighlights);
@@ -264,7 +356,7 @@ export function PdfHighlighter({
       </div>
 
       {/* PDF Viewer */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative overflow-auto">
         <PdfErrorBoundary>
         <PdfLoader key={`pdf-${scale}`} url={pdfUrl} beforeLoad={<div className="p-4 text-center">Loading PDF...</div>}>
           {(pdfDocument) => (
@@ -273,7 +365,14 @@ export function PdfHighlighter({
               pdfScaleValue={String(scale)}
               enableAreaSelection={(event) => event.altKey}
               onScrollChange={() => {}}
-              scrollRef={() => {}}
+              scrollRef={(scrollTo) => {
+                scrollToRef.current = scrollTo;
+                // Scroll to top on initial load (only once per PDF)
+                if (!hasScrolledRef.current) {
+                  hasScrolledRef.current = true;
+                  setTimeout(() => scrollTo({ pageNumber: 1, top: 0 }), 150);
+                }
+              }}
               // eslint-disable-next-line @typescript-eslint/no-unused-vars
               onSelectionFinished={(position, content, hideTipAndSelection, transformSelection) => (
                 <CommentForm
@@ -282,6 +381,7 @@ export function PdfHighlighter({
                     hideTipAndSelection();
                   }}
                   onCancel={hideTipAndSelection}
+                  selectedText={content.text}
                 />
               )}
               highlightTransform={(

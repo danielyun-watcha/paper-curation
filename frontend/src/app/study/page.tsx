@@ -2,7 +2,7 @@
 
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Paper, TranslationSection } from '@/types';
+import { Paper } from '@/types';
 import { papersApi } from '@/lib/api';
 import type { HighlightWithComment } from '@/components/pdf/PdfHighlighter';
 import { LatexText } from '@/components/LatexText';
@@ -41,15 +41,9 @@ function StudyPageContent() {
   const [loadingPapers, setLoadingPapers] = useState(true);
 
   // Full paper processing states
-  const [fullTranslating, setFullTranslating] = useState(false);
-  const [fullTranslated, setFullTranslated] = useState(false);
   const [fullSummarizing, setFullSummarizing] = useState(false);
   const [fullSummarized, setFullSummarized] = useState(false);
-  const [fullTranslation, setFullTranslation] = useState<TranslationSection[] | null>(null);
   const [fullSummary, setFullSummary] = useState<string | null>(null);
-
-  // Section-level collapse state
-  const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
 
   // Highlights
   const [highlights, setHighlights] = useState<HighlightWithComment[]>([]);
@@ -59,7 +53,6 @@ function StudyPageContent() {
   const [showResults, setShowResults] = useState(false);
 
   // Collapsible panels
-  const [, setShowTranslationContent] = useState(true);
   const [showSummaryContent, setShowSummaryContent] = useState(true);
 
   // Save notification
@@ -81,19 +74,7 @@ function StudyPageContent() {
       setHighlights([]);
     }
 
-    // Load translation and summary from paper data
-    if (paper.full_translation && paper.full_translation.length > 0) {
-      setFullTranslation(paper.full_translation);
-      setFullTranslated(true);
-      setShowResults(true);
-      const expanded: Record<number, boolean> = {};
-      paper.full_translation.forEach((_: TranslationSection, i: number) => { expanded[i] = true; });
-      setExpandedSections(expanded);
-    } else {
-      setFullTranslation(null);
-      setFullTranslated(false);
-    }
-
+    // Load summary from paper data
     if (paper.full_summary) {
       setFullSummary(paper.full_summary);
       setFullSummarized(true);
@@ -181,21 +162,7 @@ function StudyPageContent() {
     setSelectedPaperId(paperId);
     const paper = papers.find(p => p.id === paperId);
 
-    // Load saved translation and summary from paper data
-    if (paper?.full_translation && paper.full_translation.length > 0) {
-      setFullTranslation(paper.full_translation);
-      setFullTranslated(true);
-      setShowResults(true);
-      // Expand all sections by default
-      const expanded: Record<number, boolean> = {};
-      paper.full_translation.forEach((_, i) => { expanded[i] = true; });
-      setExpandedSections(expanded);
-    } else {
-      setFullTranslation(null);
-      setFullTranslated(false);
-      setExpandedSections({});
-    }
-
+    // Load saved summary from paper data
     if (paper?.full_summary) {
       setFullSummary(paper.full_summary);
       setFullSummarized(true);
@@ -205,11 +172,8 @@ function StudyPageContent() {
       setFullSummarized(false);
     }
 
-    setFullTranslating(false);
     setFullSummarizing(false);
-    setShowTranslationContent(true);
     setShowSummaryContent(true);
-    setExpandedSections({});
 
     // Load highlights from localStorage
     const savedHighlights = localStorage.getItem(`pdf-highlights-${paperId}`);
@@ -217,35 +181,6 @@ function StudyPageContent() {
       setHighlights(JSON.parse(savedHighlights));
     } else {
       setHighlights([]);
-    }
-  };
-
-  const handleFullTranslate = async () => {
-    if (!selectedPaperId) return;
-    setFullTranslating(true);
-    setFullTranslated(false);
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers/${selectedPaperId}/translate-full`, {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Translation failed');
-      const data = await response.json();
-      setFullTranslation(data.sections);
-      setFullTranslated(true);
-      setShowResults(true);
-      // Expand all sections by default
-      const expanded: Record<number, boolean> = {};
-      data.sections.forEach((_: TranslationSection, i: number) => { expanded[i] = true; });
-      setExpandedSections(expanded);
-      // Update papers list to reflect saved translation
-      setPapers(prev => prev.map(p =>
-        p.id === selectedPaperId ? { ...p, full_translation: data.sections } : p
-      ));
-    } catch (err) {
-      console.error('Full translation error:', err);
-      setFullTranslated(false);
-    } finally {
-      setFullTranslating(false);
     }
   };
 
@@ -312,29 +247,6 @@ function StudyPageContent() {
               {selectedPaper && (
                 <>
                   <button
-                    onClick={handleFullTranslate}
-                    disabled={fullTranslating || !selectedPaper || !hasPdfSource(selectedPaper)}
-                    className="px-3 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
-                    title="Translate full paper to Korean"
-                  >
-                    {fullTranslating ? (
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                    ) : fullTranslated ? (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-                      </svg>
-                    )}
-                    Translate
-                  </button>
-
-                  <button
                     onClick={handleFullSummarize}
                     disabled={fullSummarizing || !selectedPaper || !hasPdfSource(selectedPaper)}
                     className="px-3 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
@@ -372,7 +284,7 @@ function StudyPageContent() {
                     Highlights {highlights.length > 0 && `(${highlights.length})`}
                   </button>
 
-                  {(fullTranslation || fullSummary) && (
+                  {fullSummary && (
                     <button
                       onClick={() => setShowResults(!showResults)}
                       className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
@@ -380,12 +292,12 @@ function StudyPageContent() {
                           ? 'bg-blue-500 text-white'
                           : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                       }`}
-                      title="Toggle results panel"
+                      title="Toggle summary panel"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
-                      Results
+                      Summary
                     </button>
                   )}
 
@@ -504,101 +416,38 @@ function StudyPageContent() {
             </div>
           )}
 
-          {/* Results Panel */}
-          {showResults && (fullTranslation || fullSummary) && (
+          {/* Results Panel - Summary only */}
+          {showResults && fullSummary && (
             <div className="flex-1 min-w-[400px] bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
               <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="font-bold text-gray-900 dark:text-white">Results</h3>
+                <h3 className="font-bold text-gray-900 dark:text-white">Summary</h3>
               </div>
-              <div className="flex-1 overflow-y-auto p-3 space-y-4">
-                {fullSummary && (
-                  <div className="border border-purple-200 dark:border-purple-800 rounded overflow-hidden">
-                    <button
-                      onClick={() => setShowSummaryContent(!showSummaryContent)}
-                      className="w-full flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+              <div className="flex-1 overflow-y-auto p-3">
+                <div className="border border-purple-200 dark:border-purple-800 rounded overflow-hidden">
+                  <button
+                    onClick={() => setShowSummaryContent(!showSummaryContent)}
+                    className="w-full flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                  >
+                    <h4 className="text-sm font-medium text-purple-700 dark:text-purple-400">
+                      Full Summary
+                    </h4>
+                    <svg
+                      className={`w-4 h-4 text-purple-600 transition-transform ${showSummaryContent ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
                     >
-                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-400">
-                        Full Summary
-                      </h4>
-                      <svg
-                        className={`w-4 h-4 text-purple-600 transition-transform ${showSummaryContent ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {showSummaryContent && (
-                      <div className="p-3 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-800">
-                        <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                          <LatexText text={fullSummary} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {fullTranslation && fullTranslation.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-medium text-green-700 dark:text-green-400">
-                        Full Translation ({fullTranslation.length} sections)
-                      </h4>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => {
-                            const expanded: Record<number, boolean> = {};
-                            fullTranslation.forEach((_, i) => { expanded[i] = true; });
-                            setExpandedSections(expanded);
-                          }}
-                          className="text-xs text-gray-500 hover:text-green-600 px-2 py-1 rounded hover:bg-green-50"
-                        >
-                          모두 펼치기
-                        </button>
-                        <button
-                          onClick={() => setExpandedSections({})}
-                          className="text-xs text-gray-500 hover:text-green-600 px-2 py-1 rounded hover:bg-green-50"
-                        >
-                          모두 접기
-                        </button>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showSummaryContent && (
+                    <div className="p-3 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-800">
+                      <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        <LatexText text={fullSummary} />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      {fullTranslation.map((section, index) => (
-                        <div
-                          key={index}
-                          className="border border-green-200 dark:border-green-800 rounded overflow-hidden"
-                        >
-                          <button
-                            onClick={() => setExpandedSections(prev => ({ ...prev, [index]: !prev[index] }))}
-                            className="w-full flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors text-left"
-                          >
-                            <span className="text-sm font-medium text-green-800 dark:text-green-300">
-                              {section.name}
-                            </span>
-                            <svg
-                              className={`w-4 h-4 text-green-600 transition-transform flex-shrink-0 ${
-                                expandedSections[index] ? 'rotate-180' : ''
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          {expandedSections[index] && (
-                            <div className="p-3 bg-white dark:bg-gray-800 border-t border-green-200 dark:border-green-800">
-                              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                <LatexText text={section.translated} />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}

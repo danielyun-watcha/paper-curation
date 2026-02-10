@@ -229,6 +229,63 @@ Korean:"""
 
         return '\n'.join(cleaned_lines).strip()
 
+    def _filter_abstract_authors(self, text: str) -> str:
+        """Remove author names and affiliations that got mixed into abstract."""
+        import re
+
+        # Common patterns for author info that shouldn't be in abstract
+        # Pattern 1: Name followed by affiliation (University, Google, etc.)
+        # Pattern 2: Multiple names with asterisks (corresponding author markers)
+        # Pattern 3: Email-like patterns
+
+        lines = text.split('\n')
+        filtered_lines = []
+
+        author_patterns = [
+            # Name + University/Company pattern
+            r'^[A-Z][a-z]+\s+[A-Z][a-z]+[\*†]?\s+(University|Google|DeepMind|Microsoft|Meta|Amazon|Apple|Alibaba|Tencent|Baidu|Huawei)',
+            # Multiple names on same line (typical author list)
+            r'^([A-Z][a-z]+\s+[A-Z][a-z]+[\*†]?\s*,?\s*){3,}',
+            # Email patterns
+            r'@(gmail|google|edu|com|org|cn|ac\.|mail)',
+            # Lines with mostly names (CamelCase words)
+            r'^([A-Z][a-z]+\s+){4,}[A-Z][a-z]+$',
+            # Affiliation-only lines
+            r'^(University|Department|School|Institute|Lab|Google|DeepMind|Microsoft)\s+of',
+            # Lines starting with asterisk (author notes)
+            r'^\*\s*(Equal|Corresponding)',
+        ]
+
+        for line in lines:
+            stripped = line.strip()
+            should_skip = False
+
+            for pattern in author_patterns:
+                if re.search(pattern, stripped, re.IGNORECASE):
+                    should_skip = True
+                    break
+
+            # Skip lines that look like author lists (many capitalized words, no verbs)
+            if not should_skip:
+                words = stripped.split()
+                if len(words) >= 4:
+                    capitalized = sum(1 for w in words if w[0].isupper() and len(w) > 1)
+                    # If more than 70% of words are capitalized names and line is short
+                    if capitalized / len(words) > 0.7 and len(stripped) < 200:
+                        # Check if it looks like author names (no common verbs/articles)
+                        common_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+                                       'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
+                                       'could', 'should', 'may', 'might', 'must', 'can', 'for',
+                                       'with', 'from', 'that', 'this', 'which', 'where', 'when'}
+                        has_common = any(w.lower() in common_words for w in words)
+                        if not has_common:
+                            should_skip = True
+
+            if not should_skip:
+                filtered_lines.append(line)
+
+        return '\n'.join(filtered_lines).strip()
+
     def _filter_metadata_noise(self, text: str) -> str:
         """Remove author info, affiliations, copyright notices, and other metadata noise."""
         import re
@@ -526,50 +583,107 @@ Korean:"""
 
         sections = []
 
-        # Common section patterns in research papers
-        section_patterns = [
-            r'^(Abstract|ABSTRACT)\s*$',
-            r'^(\d+\.?\s*)?(Introduction|INTRODUCTION)\s*$',
-            r'^(\d+\.?\s*)?(Preliminary|PRELIMINARY|Preliminaries|PRELIMINARIES|Problem\s+(Definition|Statement|Formulation))\s*$',
-            r'^(\d+\.?\s*)?(Motivation|MOTIVATION)\s*$',
-            r'^(\d+\.?\s*)?(Related\s+Work|RELATED\s+WORK|Background|BACKGROUND|Literature\s+Review)\s*$',
-            r'^(\d+\.?\s*)?(Method|METHODS?|Methodology|METHODOLOGY|Approach|APPROACH|Proposed\s+Method|Our\s+Method|Model|MODEL)\s*$',
-            r'^(\d+\.?\s*)?(Experiment|EXPERIMENTS?|Evaluation|EVALUATION|Results|RESULTS|Empirical\s+Study)\s*$',
-            r'^(\d+\.?\s*)?(Analysis|ANALYSIS|Ablation|ABLATION)\s*$',
-            r'^(\d+\.?\s*)?(Discussion|DISCUSSION)\s*$',
-            r'^(\d+\.?\s*)?(Conclusion|CONCLUSIONS?|Summary|SUMMARY|Future\s+Work)\s*$',
-            r'^(\d+\.?\s*)?(Acknowledgment|ACKNOWLEDGMENTS?)\s*$',
-            r'^(\d+\.?\s*)?(Reference|REFERENCES?|Bibliography)\s*$',
-            r'^(\d+\.?\s*)?(Appendix|APPENDIX)\s*$',
-        ]
+        # Section patterns - more flexible matching
+        # Pattern: optional number + section keyword + optional additional text
+        section_keywords = {
+            'Abstract': ['abstract'],
+            'Introduction': ['introduction', 'intro'],
+            'Preliminaries': ['preliminary', 'preliminaries', 'problem definition', 'problem statement', 'problem formulation', 'problem setup'],
+            'Motivation': ['motivation'],
+            'Related Work': ['related work', 'related works', 'background', 'literature review', 'prior work'],
+            'Method': ['method', 'methods', 'methodology', 'approach', 'proposed method', 'proposed approach',
+                       'our method', 'our approach', 'model', 'framework', 'architecture', 'the .* model',
+                       'our framework', 'proposed framework'],
+            'Experiments': ['experiment', 'experiments', 'evaluation', 'empirical study', 'empirical evaluation',
+                           'experimental setup', 'experimental results', 'results'],
+            'Analysis': ['analysis', 'ablation', 'ablation study', 'ablation studies'],
+            'Discussion': ['discussion', 'discussions'],
+            'Conclusion': ['conclusion', 'conclusions', 'summary', 'future work', 'concluding remarks'],
+            'Acknowledgments': ['acknowledgment', 'acknowledgments', 'acknowledgement', 'acknowledgements'],
+            'References': ['reference', 'references', 'bibliography'],
+            'Appendix': ['appendix', 'supplementary', 'supplementary material'],
+        }
 
-        combined_pattern = '|'.join(f'({p})' for p in section_patterns)
+        def get_section_name(line: str) -> str | None:
+            """Check if line is a section header and return normalized section name."""
+            line_lower = line.strip().lower()
+            # Remove leading numbers like "1.", "2", "3.", etc.
+            line_clean = re.sub(r'^[\d.]+\s*', '', line_lower).strip()
+
+            for section_name, keywords in section_keywords.items():
+                for keyword in keywords:
+                    # Check if line starts with the keyword
+                    if line_clean.startswith(keyword):
+                        return section_name
+                    # Also check with regex for patterns like "the TIGER model"
+                    if keyword.startswith('the ') and re.match(keyword, line_clean):
+                        return section_name
+            return None
+
+        def is_section_header(line: str) -> bool:
+            """Check if a line looks like a section header."""
+            stripped = line.strip()
+            if not stripped:
+                return False
+
+            # Must be relatively short (section titles are usually under 100 chars)
+            if len(stripped) > 100:
+                return False
+
+            # Check if it matches known section patterns
+            if get_section_name(stripped):
+                return True
+
+            # Check for numbered sections like "3 TIGER" or "3. Our Method"
+            if re.match(r'^\d+\.?\s+[A-Z]', stripped):
+                # It's a numbered section, but not a known keyword
+                # Still treat as potential section if it's short and title-case
+                if len(stripped) < 80:
+                    return True
+
+            return False
 
         lines = text.split('\n')
-        current_section = "Abstract"
+        current_section = None  # Start with None, not "Abstract"
         current_content = []
+        found_first_section = False
 
         for line in lines:
-            # Check if this line is a section header
-            is_header = False
-            for pattern in section_patterns:
-                if re.match(pattern, line.strip(), re.IGNORECASE):
-                    # Save previous section
-                    if current_content:
-                        content_text = '\n'.join(current_content).strip()
-                        if content_text:
-                            sections.append({
-                                "name": current_section,
-                                "content": content_text
-                            })
-                    # Start new section
-                    current_section = re.sub(r'^\d+\.?\s*', '', line.strip()).title()
-                    current_content = []
-                    is_header = True
-                    break
+            stripped = line.strip()
 
-            if not is_header:
+            # Check if this line is a section header
+            detected_section = get_section_name(stripped)
+
+            if detected_section or is_section_header(line):
+                found_first_section = True
+
+                # Save previous section
+                if current_section and current_content:
+                    content_text = '\n'.join(current_content).strip()
+                    if content_text:
+                        # Filter author info from abstract
+                        if current_section == "Abstract":
+                            content_text = self._filter_abstract_authors(content_text)
+                        sections.append({
+                            "name": current_section,
+                            "content": content_text
+                        })
+
+                # Start new section - use detected name or extract from line
+                if detected_section:
+                    current_section = detected_section
+                else:
+                    # Extract section name from numbered header like "3 TIGER: ..."
+                    cleaned = re.sub(r'^\d+\.?\s*', '', stripped)
+                    # Take only the first part before colon if exists
+                    if ':' in cleaned:
+                        cleaned = cleaned.split(':')[0].strip()
+                    current_section = cleaned.title() if cleaned else "Section"
+                current_content = []
+            elif found_first_section and current_section:
+                # Only add content after we've found the first section header
                 current_content.append(line)
+            # else: Skip content before first section (title, authors, etc.)
 
         # Don't forget the last section
         if current_content:

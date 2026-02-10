@@ -904,7 +904,7 @@ async def translate_paper(paper_id: str):
 
 @router.post("/{paper_id}/translate-full")
 async def translate_full_paper(paper_id: str):
-    """Translate full paper PDF to Korean using DeepL API"""
+    """Translate full paper PDF to Korean using PyMuPDF + DeepL"""
     from app.services.deepl_service import get_deepl_service, DeepLServiceError
 
     repo = get_paper_repository()
@@ -927,10 +927,10 @@ async def translate_full_paper(paper_id: str):
         raise HTTPException(status_code=500, detail="DeepL API key not configured")
 
     try:
-        # Extract text from PDF
+        # Extract text from PDF using improved PyMuPDF extraction
         paper_text = await pdf_service.get_paper_text(arxiv_id=arxiv_id, pdf_path=pdf_path)
 
-        # Parse sections and filter content using Ollama service utilities
+        # Parse sections using improved parser
         sections = ollama_service._parse_paper_sections(paper_text)
 
         # Filter and translate each section with DeepL
@@ -1355,3 +1355,44 @@ async def refresh_arxiv_ids():
         "updated": updated,
         "errors": errors,
     }
+
+
+# ============================================
+# Text Translation (for selected text)
+# ============================================
+
+from pydantic import BaseModel
+
+class TranslateTextRequest(BaseModel):
+    text: str
+    target_lang: str = "KO"
+
+class TranslateTextResponse(BaseModel):
+    original: str
+    translated: str
+
+@router.post("/translate-text", response_model=TranslateTextResponse)
+async def translate_text(request: TranslateTextRequest):
+    """Translate selected text using DeepL API"""
+    from app.services.deepl_service import get_deepl_service, DeepLServiceError
+
+    deepl_service = get_deepl_service()
+
+    if deepl_service is None:
+        raise HTTPException(status_code=500, detail="DeepL API key not configured")
+
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    # Limit text length to prevent abuse
+    if len(request.text) > 10000:
+        raise HTTPException(status_code=400, detail="Text too long (max 10000 characters)")
+
+    try:
+        translated = await deepl_service.translate(request.text, target_lang=request.target_lang)
+        return TranslateTextResponse(
+            original=request.text,
+            translated=translated
+        )
+    except DeepLServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
