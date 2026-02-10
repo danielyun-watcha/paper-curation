@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.db import init_db
 from app.routers import papers, tags
 from app.services.cache_service import start_cache_cleanup_scheduler
 from app.utils.http_client import HttpClientManager
@@ -15,7 +16,10 @@ app = FastAPI(title=settings.app_name)
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background tasks on app startup"""
+    """Initialize database and start background tasks on app startup"""
+    # Initialize SQLite database
+    init_db()
+
     asyncio.create_task(start_cache_cleanup_scheduler())
 
 

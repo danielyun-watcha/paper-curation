@@ -1,86 +1,138 @@
-"""Repository layer for paper data access"""
+"""Repository layer for paper data access using SQLite"""
+import json
+import uuid
+from datetime import datetime
 from math import ceil
 from typing import List, Optional, Dict, Any, Tuple
 
-from app.database import load_data, save_data, generate_id, now_iso
+from app.db.connection import get_db
+
+
+def generate_id() -> str:
+    """Generate a new UUID"""
+    return str(uuid.uuid4())
+
+
+def now_iso() -> str:
+    """Get current time in ISO format"""
+    return datetime.now().isoformat()
 
 
 class PaperRepository:
     """
-    Repository for paper CRUD operations.
-    Provides abstraction over JSON file storage with efficient lookups.
+    Repository for paper CRUD operations using SQLite.
+    Provides the same interface as the previous JSON-based implementation.
     """
 
-    def __init__(self):
-        self._data: Optional[dict] = None
+    # ============ Helper Methods ============
 
-    def _get_data(self) -> dict:
-        """Get current data (lazy load)"""
-        if self._data is None:
-            self._data = load_data()
-        return self._data
+    def _row_to_dict(self, row) -> dict:
+        """Convert SQLite row to paper dict with tags."""
+        if row is None:
+            return None
 
-    def _save(self):
-        """Save current data to storage"""
-        if self._data is not None:
-            save_data(self._data)
+        paper = dict(row)
 
-    def reload(self):
-        """Force reload data from storage"""
-        self._data = load_data()
+        # Parse JSON fields
+        paper["authors"] = json.loads(paper["authors"]) if paper["authors"] else []
 
-    def get_raw_data(self) -> dict:
-        """Get raw data dict for complex operations.
+        # Parse summary object
+        if any(paper.get(f"summary_{k}") for k in ["one_line", "contribution", "methodology", "results"]):
+            paper["summary"] = {
+                "one_line": paper.pop("summary_one_line"),
+                "contribution": paper.pop("summary_contribution"),
+                "methodology": paper.pop("summary_methodology"),
+                "results": paper.pop("summary_results"),
+            }
+        else:
+            paper.pop("summary_one_line", None)
+            paper.pop("summary_contribution", None)
+            paper.pop("summary_methodology", None)
+            paper.pop("summary_results", None)
 
-        WARNING: Use sparingly. Prefer specific repository methods.
-        Caller is responsible for calling save_all() after modifications.
-        """
-        return self._get_data()
+        # Parse translation JSON
+        if paper.get("translation"):
+            paper["translation"] = json.loads(paper["translation"])
+
+        return paper
+
+    def _get_paper_tags(self, conn, paper_id: str) -> List[dict]:
+        """Get tags for a paper."""
+        cursor = conn.execute("""
+            SELECT t.id, t.name
+            FROM tags t
+            JOIN paper_tags pt ON t.id = pt.tag_id
+            WHERE pt.paper_id = ?
+            ORDER BY t.name
+        """, (paper_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def _paper_with_tags(self, conn, row) -> Optional[dict]:
+        """Convert row to dict and attach tags."""
+        if row is None:
+            return None
+        paper = self._row_to_dict(row)
+        paper["tags"] = self._get_paper_tags(conn, paper["id"])
+        return paper
 
     # ============ Query Methods ============
 
     def find_all(self) -> List[dict]:
-        """Get all papers"""
-        return self._get_data()["papers"]
+        """Get all papers with tags."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT * FROM papers ORDER BY updated_at DESC")
+            papers = []
+            for row in cursor.fetchall():
+                paper = self._paper_with_tags(conn, row)
+                papers.append(paper)
+            return papers
 
     def find_by_id(self, paper_id: str) -> Optional[dict]:
-        """Find paper by ID"""
-        return next(
-            (p for p in self._get_data()["papers"] if p["id"] == paper_id),
-            None
-        )
+        """Find paper by ID."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT * FROM papers WHERE id = ?", (paper_id,))
+            row = cursor.fetchone()
+            return self._paper_with_tags(conn, row)
 
     def find_by_arxiv_id(self, arxiv_id: str) -> Optional[dict]:
-        """Find paper by arXiv ID"""
-        return next(
-            (p for p in self._get_data()["papers"] if p.get("arxiv_id") == arxiv_id),
-            None
-        )
+        """Find paper by arXiv ID."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT * FROM papers WHERE arxiv_id = ?", (arxiv_id,))
+            row = cursor.fetchone()
+            return self._paper_with_tags(conn, row)
 
     def find_by_doi(self, doi: str) -> Optional[dict]:
-        """Find paper by DOI"""
-        return next(
-            (p for p in self._get_data()["papers"] if p.get("doi") == doi),
-            None
-        )
+        """Find paper by DOI."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT * FROM papers WHERE doi = ?", (doi,))
+            row = cursor.fetchone()
+            return self._paper_with_tags(conn, row)
 
     def find_by_title(self, title: str, case_insensitive: bool = True) -> Optional[dict]:
-        """Find paper by title"""
-        if case_insensitive:
-            title_lower = title.lower()
-            return next(
-                (p for p in self._get_data()["papers"] if p["title"].lower() == title_lower),
-                None
-            )
-        return next(
-            (p for p in self._get_data()["papers"] if p["title"] == title),
-            None
-        )
+        """Find paper by title."""
+        with get_db() as conn:
+            if case_insensitive:
+                cursor = conn.execute(
+                    "SELECT * FROM papers WHERE LOWER(title) = LOWER(?)",
+                    (title,)
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM papers WHERE title = ?",
+                    (title,)
+                )
+            row = cursor.fetchone()
+            return self._paper_with_tags(conn, row)
 
     def get_years(self) -> List[int]:
-        """Get list of years that have papers, sorted descending"""
-        years = set(p["year"] for p in self._get_data()["papers"] if p.get("year"))
-        return sorted(years, reverse=True)
+        """Get list of years that have papers, sorted descending."""
+        with get_db() as conn:
+            cursor = conn.execute("""
+                SELECT DISTINCT year FROM papers
+                WHERE year IS NOT NULL
+                ORDER BY year DESC
+            """)
+            return [row["year"] for row in cursor.fetchall()]
 
     def find_all_filtered(
         self,
@@ -96,65 +148,101 @@ class PaperRepository:
 
         Returns: (papers, total_count, total_pages)
         """
-        papers = self._get_data()["papers"]
+        with get_db() as conn:
+            # Build query
+            conditions = []
+            params = []
 
-        # Apply filters
-        if search:
-            search_lower = search.lower()
-            papers = [
-                p for p in papers
-                if search_lower in p["title"].lower()
-                or search_lower in p.get("abstract", "").lower()
-                or (p.get("conference") and search_lower in p["conference"].lower())
-            ]
+            if search:
+                conditions.append("""
+                    (LOWER(title) LIKE ? OR LOWER(abstract) LIKE ? OR LOWER(conference) LIKE ?)
+                """)
+                search_pattern = f"%{search.lower()}%"
+                params.extend([search_pattern, search_pattern, search_pattern])
 
-        if category:
-            papers = [p for p in papers if p["category"] == category]
+            if category:
+                conditions.append("category = ?")
+                params.append(category)
 
-        if year:
-            papers = [p for p in papers if p["year"] == year]
+            if year:
+                conditions.append("year = ?")
+                params.append(year)
 
-        if tags:
-            tag_names = [t.lower() for t in tags]
-            papers = [
-                p for p in papers
-                if any(t["name"].lower() in tag_names for t in p.get("tags", []))
-            ]
+            # Base query
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-        # Sort by updated_at descending
-        papers = sorted(papers, key=lambda p: p.get("updated_at", ""), reverse=True)
+            if tags:
+                # Filter by tags using subquery
+                tag_placeholders = ",".join("?" * len(tags))
+                tag_conditions = f"""
+                    id IN (
+                        SELECT pt.paper_id FROM paper_tags pt
+                        JOIN tags t ON pt.tag_id = t.id
+                        WHERE LOWER(t.name) IN ({tag_placeholders})
+                    )
+                """
+                where_clause = f"({where_clause}) AND {tag_conditions}"
+                params.extend([t.lower() for t in tags])
 
-        total = len(papers)
-        pages = ceil(total / limit) if total > 0 else 0
+            # Get total count
+            count_query = f"SELECT COUNT(*) as cnt FROM papers WHERE {where_clause}"
+            cursor = conn.execute(count_query, params)
+            total = cursor.fetchone()["cnt"]
 
-        # Paginate
-        start = (page - 1) * limit
-        end = start + limit
-        papers = papers[start:end]
+            # Calculate pagination
+            pages = ceil(total / limit) if total > 0 else 0
+            offset = (page - 1) * limit
 
-        return papers, total, pages
+            # Get paginated results
+            query = f"""
+                SELECT * FROM papers
+                WHERE {where_clause}
+                ORDER BY updated_at DESC
+                LIMIT ? OFFSET ?
+            """
+            cursor = conn.execute(query, params + [limit, offset])
+
+            papers = []
+            for row in cursor.fetchall():
+                paper = self._paper_with_tags(conn, row)
+                papers.append(paper)
+
+            return papers, total, pages
 
     def count(self) -> int:
-        """Count total papers"""
-        return len(self._get_data()["papers"])
+        """Count total papers."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT COUNT(*) as cnt FROM papers")
+            return cursor.fetchone()["cnt"]
 
     # ============ Existence Checks ============
 
     def exists_by_id(self, paper_id: str) -> bool:
-        """Check if paper exists by ID"""
-        return self.find_by_id(paper_id) is not None
+        """Check if paper exists by ID."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,))
+            return cursor.fetchone() is not None
 
     def exists_by_arxiv_id(self, arxiv_id: str) -> bool:
-        """Check if paper exists by arXiv ID"""
-        return self.find_by_arxiv_id(arxiv_id) is not None
+        """Check if paper exists by arXiv ID."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT 1 FROM papers WHERE arxiv_id = ?", (arxiv_id,))
+            return cursor.fetchone() is not None
 
     def exists_by_doi(self, doi: str) -> bool:
-        """Check if paper exists by DOI"""
-        return self.find_by_doi(doi) is not None
+        """Check if paper exists by DOI."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT 1 FROM papers WHERE doi = ?", (doi,))
+            return cursor.fetchone() is not None
 
     def exists_by_title(self, title: str) -> bool:
-        """Check if paper exists by title (case-insensitive)"""
-        return self.find_by_title(title) is not None
+        """Check if paper exists by title (case-insensitive)."""
+        with get_db() as conn:
+            cursor = conn.execute(
+                "SELECT 1 FROM papers WHERE LOWER(title) = LOWER(?)",
+                (title,)
+            )
+            return cursor.fetchone() is not None
 
     # ============ Mutation Methods ============
 
@@ -168,92 +256,178 @@ class PaperRepository:
         if "updated_at" not in paper:
             paper["updated_at"] = now
 
-        self._get_data()["papers"].append(paper)
-        self._save()
-        return paper
+        with get_db() as conn:
+            # Extract tags before insert
+            tags = paper.pop("tags", [])
+
+            # Prepare summary fields
+            summary = paper.pop("summary", None)
+            summary_one_line = summary.get("one_line") if summary else None
+            summary_contribution = summary.get("contribution") if summary else None
+            summary_methodology = summary.get("methodology") if summary else None
+            summary_results = summary.get("results") if summary else None
+
+            # Serialize JSON fields
+            authors_json = json.dumps(paper.get("authors", []))
+            translation_json = json.dumps(paper.get("translation")) if paper.get("translation") else None
+
+            conn.execute("""
+                INSERT INTO papers (
+                    id, title, authors, abstract, year, arxiv_id, arxiv_url,
+                    doi, paper_url, conference, category, published_at, pdf_path,
+                    summary_one_line, summary_contribution, summary_methodology, summary_results,
+                    full_summary, translation, full_translation, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                paper["id"],
+                paper["title"],
+                authors_json,
+                paper.get("abstract"),
+                paper.get("year"),
+                paper.get("arxiv_id"),
+                paper.get("arxiv_url"),
+                paper.get("doi"),
+                paper.get("paper_url"),
+                paper.get("conference"),
+                paper.get("category", "other"),
+                paper.get("published_at"),
+                paper.get("pdf_path"),
+                summary_one_line,
+                summary_contribution,
+                summary_methodology,
+                summary_results,
+                paper.get("full_summary"),
+                translation_json,
+                paper.get("full_translation"),
+                paper["created_at"],
+                paper["updated_at"],
+            ))
+
+            # Add tags
+            for tag in tags:
+                self._ensure_tag(conn, tag)
+                conn.execute(
+                    "INSERT OR IGNORE INTO paper_tags (paper_id, tag_id) VALUES (?, ?)",
+                    (paper["id"], tag["id"])
+                )
+
+            # Return complete paper with tags
+            paper["tags"] = tags
+            if summary:
+                paper["summary"] = summary
+            return paper
+
+    def _ensure_tag(self, conn, tag: dict):
+        """Ensure tag exists in database."""
+        conn.execute(
+            "INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)",
+            (tag["id"], tag["name"])
+        )
 
     def update(self, paper_id: str, updates: Dict[str, Any]) -> Optional[dict]:
         """Update a paper by ID. Returns updated paper or None if not found."""
-        paper = self.find_by_id(paper_id)
-        if paper is None:
+        if not self.exists_by_id(paper_id):
             return None
 
         updates["updated_at"] = now_iso()
-        paper.update(updates)
-        self._save()
-        return paper
+
+        with get_db() as conn:
+            # Handle tags separately
+            new_tags = updates.pop("tags", None)
+
+            # Handle summary object
+            if "summary" in updates:
+                summary = updates.pop("summary")
+                if summary:
+                    updates["summary_one_line"] = summary.get("one_line")
+                    updates["summary_contribution"] = summary.get("contribution")
+                    updates["summary_methodology"] = summary.get("methodology")
+                    updates["summary_results"] = summary.get("results")
+
+            # Serialize JSON fields if present
+            if "authors" in updates:
+                updates["authors"] = json.dumps(updates["authors"])
+            if "translation" in updates:
+                updates["translation"] = json.dumps(updates["translation"]) if updates["translation"] else None
+
+            # Build UPDATE query
+            if updates:
+                set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+                values = list(updates.values()) + [paper_id]
+                conn.execute(
+                    f"UPDATE papers SET {set_clause} WHERE id = ?",
+                    values
+                )
+
+            # Update tags if provided
+            if new_tags is not None:
+                # Remove old tags
+                conn.execute("DELETE FROM paper_tags WHERE paper_id = ?", (paper_id,))
+                # Add new tags
+                for tag in new_tags:
+                    self._ensure_tag(conn, tag)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO paper_tags (paper_id, tag_id) VALUES (?, ?)",
+                        (paper_id, tag["id"])
+                    )
+
+        return self.find_by_id(paper_id)
 
     def delete(self, paper_id: str) -> bool:
         """Delete a paper by ID. Returns True if deleted, False if not found."""
-        data = self._get_data()
-        original_len = len(data["papers"])
-        data["papers"] = [p for p in data["papers"] if p["id"] != paper_id]
-
-        if len(data["papers"]) < original_len:
-            self._save()
-            return True
-        return False
+        with get_db() as conn:
+            cursor = conn.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
+            return cursor.rowcount > 0
 
     def save_all(self):
-        """Explicitly save all changes"""
-        self._save()
+        """No-op for SQLite (auto-commit). Kept for interface compatibility."""
+        pass
 
     def add_bulk(self, papers: List[dict]) -> List[dict]:
-        """Add multiple papers at once. More efficient than individual adds."""
-        now = now_iso()
-        data = self._get_data()
-
+        """Add multiple papers at once."""
+        result = []
         for paper in papers:
-            if "id" not in paper:
-                paper["id"] = generate_id()
-            if "created_at" not in paper:
-                paper["created_at"] = now
-            if "updated_at" not in paper:
-                paper["updated_at"] = now
-            data["papers"].append(paper)
-
-        self._save()
-        return papers
+            result.append(self.add(paper))
+        return result
 
     def update_field(self, paper_id: str, field: str, value: Any) -> Optional[dict]:
-        """Update a single field on a paper"""
-        paper = self.find_by_id(paper_id)
-        if paper is None:
-            return None
-
-        paper[field] = value
-        paper["updated_at"] = now_iso()
-        self._save()
-        return paper
+        """Update a single field on a paper."""
+        return self.update(paper_id, {field: value})
 
     # ============ Tag Methods ============
 
     def get_all_tags(self) -> List[dict]:
-        """Get all tags"""
-        return self._get_data()["tags"]
+        """Get all tags."""
+        with get_db() as conn:
+            cursor = conn.execute("SELECT id, name FROM tags ORDER BY name")
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_or_create_tag(self, name: str) -> dict:
-        """Get existing tag or create new one (case-insensitive match)"""
-        data = self._get_data()
+        """Get existing tag or create new one (case-insensitive match)."""
         name = name.strip()
         if not name:
             raise ValueError("Tag name cannot be empty")
 
-        # Find existing tag
-        existing = next(
-            (t for t in data["tags"] if t["name"].lower() == name.lower()),
-            None
-        )
-        if existing:
-            return existing
+        with get_db() as conn:
+            # Find existing tag
+            cursor = conn.execute(
+                "SELECT id, name FROM tags WHERE LOWER(name) = LOWER(?)",
+                (name,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
 
-        # Create new tag
-        new_tag = {"id": generate_id(), "name": name}
-        data["tags"].append(new_tag)
-        return new_tag
+            # Create new tag
+            new_tag = {"id": generate_id(), "name": name}
+            conn.execute(
+                "INSERT INTO tags (id, name) VALUES (?, ?)",
+                (new_tag["id"], new_tag["name"])
+            )
+            return new_tag
 
     def get_or_create_tags(self, tag_names: List[str]) -> List[dict]:
-        """Get or create multiple tags, sorted alphabetically"""
+        """Get or create multiple tags, sorted alphabetically."""
         result = []
         for name in sorted(tag_names):
             name = name.strip()
@@ -267,7 +441,7 @@ _paper_repository: Optional[PaperRepository] = None
 
 
 def get_paper_repository() -> PaperRepository:
-    """Get singleton PaperRepository instance"""
+    """Get singleton PaperRepository instance."""
     global _paper_repository
     if _paper_repository is None:
         _paper_repository = PaperRepository()

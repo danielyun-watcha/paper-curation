@@ -1010,8 +1010,8 @@ async def summarize_full_paper(paper_id: str):
         # Summarize with Ollama
         summary = await ollama_service.summarize_full_paper(paper_text)
 
-        # Note: Summary is NOT saved to backend anymore
-        # Frontend saves it to localStorage for per-browser storage
+        # Save summary to database
+        repo.update(paper_id, {"full_summary": summary})
 
         return {
             "paper_id": paper_id,

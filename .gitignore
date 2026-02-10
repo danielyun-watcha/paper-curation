@@ -23,3 +23,16 @@ build/
 
 # Logs
 *.log
+
+# Database
+*.db
+*.db-journal
+
+# Backups
+*.backup
+
+# Cache
+*_cache.json
+
+# Uploads
+backend/uploads/

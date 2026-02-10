@@ -74,10 +74,9 @@ function StudyPageContent() {
       setHighlights([]);
     }
 
-    // Load summary from localStorage (per-browser storage)
-    const savedSummary = localStorage.getItem(`pdf-summary-${paperId}`);
-    if (savedSummary) {
-      setFullSummary(savedSummary);
+    // Load summary from server (paper.full_summary)
+    if (paper.full_summary) {
+      setFullSummary(paper.full_summary);
       setFullSummarized(true);
       setShowRightPanel(true);
     } else {
@@ -160,10 +159,10 @@ function StudyPageContent() {
   const handlePaperSelect = (paperId: string) => {
     setSelectedPaperId(paperId);
 
-    // Load summary from localStorage (per-browser storage)
-    const savedSummary = localStorage.getItem(`pdf-summary-${paperId}`);
-    if (savedSummary) {
-      setFullSummary(savedSummary);
+    // Find the selected paper and load its summary from server data
+    const paper = papers.find(p => p.id === paperId);
+    if (paper?.full_summary) {
+      setFullSummary(paper.full_summary);
       setFullSummarized(true);
       setShowRightPanel(true);
     } else {
@@ -197,8 +196,11 @@ function StudyPageContent() {
       setFullSummary(data.summary);
       setFullSummarized(true);
       setShowRightPanel(true);
-      // Save summary to localStorage (per-browser storage)
-      localStorage.setItem(`pdf-summary-${selectedPaperId}`, data.summary);
+
+      // Update the papers list with new summary (server already saved it)
+      setPapers(prev => prev.map(p =>
+        p.id === selectedPaperId ? { ...p, full_summary: data.summary } : p
+      ));
     } catch (err) {
       console.error('Full summary error:', err);
       setFullSummarized(false);
