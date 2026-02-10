@@ -47,13 +47,13 @@ function StudyPageContent() {
 
   // Highlights
   const [highlights, setHighlights] = useState<HighlightWithComment[]>([]);
-  const [showHighlights, setShowHighlights] = useState(false);
 
-  // Result panel
-  const [showResults, setShowResults] = useState(false);
+  // Right panel (Summary + Highlights)
+  const [showRightPanel, setShowRightPanel] = useState(false);
 
   // Collapsible panels
   const [showSummaryContent, setShowSummaryContent] = useState(true);
+  const [showHighlightsContent, setShowHighlightsContent] = useState(true);
 
   // Save notification
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -66,7 +66,7 @@ function StudyPageContent() {
   const loadPaperData = (paper: Paper, paperId: string) => {
     setSelectedPaperId(paperId);
 
-    // Load highlights
+    // Load highlights from localStorage
     const savedHighlights = localStorage.getItem(`pdf-highlights-${paperId}`);
     if (savedHighlights) {
       setHighlights(JSON.parse(savedHighlights));
@@ -74,11 +74,12 @@ function StudyPageContent() {
       setHighlights([]);
     }
 
-    // Load summary from paper data
-    if (paper.full_summary) {
-      setFullSummary(paper.full_summary);
+    // Load summary from localStorage (per-browser storage)
+    const savedSummary = localStorage.getItem(`pdf-summary-${paperId}`);
+    if (savedSummary) {
+      setFullSummary(savedSummary);
       setFullSummarized(true);
-      setShowResults(true);
+      setShowRightPanel(true);
     } else {
       setFullSummary(null);
       setFullSummarized(false);
@@ -110,8 +111,7 @@ function StudyPageContent() {
             const paper = response.items.find((p: Paper) => p.id === session.paperId);
             if (paper) {
               loadPaperData(paper, session.paperId);
-              setShowHighlights(session.showHighlights || false);
-              setShowResults(session.showResults || (paper.full_translation || paper.full_summary ? true : false));
+              setShowRightPanel(session.showRightPanel || (paper.full_summary ? true : false));
             }
           }
         }
@@ -130,8 +130,7 @@ function StudyPageContent() {
 
     const session = {
       paperId: selectedPaperId,
-      showHighlights,
-      showResults,
+      showRightPanel,
       savedAt: new Date().toISOString(),
     };
 
@@ -160,13 +159,13 @@ function StudyPageContent() {
 
   const handlePaperSelect = (paperId: string) => {
     setSelectedPaperId(paperId);
-    const paper = papers.find(p => p.id === paperId);
 
-    // Load saved summary from paper data
-    if (paper?.full_summary) {
-      setFullSummary(paper.full_summary);
+    // Load summary from localStorage (per-browser storage)
+    const savedSummary = localStorage.getItem(`pdf-summary-${paperId}`);
+    if (savedSummary) {
+      setFullSummary(savedSummary);
       setFullSummarized(true);
-      setShowResults(true);
+      setShowRightPanel(true);
     } else {
       setFullSummary(null);
       setFullSummarized(false);
@@ -174,6 +173,7 @@ function StudyPageContent() {
 
     setFullSummarizing(false);
     setShowSummaryContent(true);
+    setShowHighlightsContent(true);
 
     // Load highlights from localStorage
     const savedHighlights = localStorage.getItem(`pdf-highlights-${paperId}`);
@@ -196,11 +196,9 @@ function StudyPageContent() {
       const data = await response.json();
       setFullSummary(data.summary);
       setFullSummarized(true);
-      setShowResults(true);
-      // Update papers list to reflect saved summary
-      setPapers(prev => prev.map(p =>
-        p.id === selectedPaperId ? { ...p, full_summary: data.summary } : p
-      ));
+      setShowRightPanel(true);
+      // Save summary to localStorage (per-browser storage)
+      localStorage.setItem(`pdf-summary-${selectedPaperId}`, data.summary);
     } catch (err) {
       console.error('Full summary error:', err);
       setFullSummarized(false);
@@ -270,36 +268,19 @@ function StudyPageContent() {
                   </button>
 
                   <button
-                    onClick={() => setShowHighlights(!showHighlights)}
+                    onClick={() => setShowRightPanel(!showRightPanel)}
                     className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                      showHighlights
-                        ? 'bg-yellow-500 text-white'
-                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                      showRightPanel
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                     }`}
-                    title="Toggle highlights panel"
+                    title="Toggle notes panel"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
-                    Highlights {highlights.length > 0 && `(${highlights.length})`}
+                    Notes {(fullSummary || highlights.length > 0) && `(${(fullSummary ? 1 : 0) + highlights.length})`}
                   </button>
-
-                  {fullSummary && (
-                    <button
-                      onClick={() => setShowResults(!showResults)}
-                      className={`px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-1 ${
-                        showResults
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                      }`}
-                      title="Toggle summary panel"
-                    >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      Summary
-                    </button>
-                  )}
 
                   {/* Save Button */}
                   <div className="relative">
@@ -331,7 +312,7 @@ function StudyPageContent() {
         <div className="flex-1 flex gap-4 min-h-0">
           {/* PDF Viewer with Highlighter */}
           <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex-1 ${
-            showHighlights || showResults ? '' : 'w-full'
+            showRightPanel ? '' : 'w-full'
           }`}>
             {hasPdfSource(selectedPaper) ? (
               <Suspense fallback={<div className="p-4 text-center">Loading PDF viewer...</div>}>
@@ -360,79 +341,59 @@ function StudyPageContent() {
             )}
           </div>
 
-          {/* Highlights Panel */}
-          {showHighlights && (
-            <div className="w-80 bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
+          {/* Right Panel - Summary + Highlights */}
+          {showRightPanel && (
+            <div className="w-96 bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
               <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <svg className="h-5 w-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                  Highlights & Comments
-                </h3>
+                <h3 className="font-bold text-gray-900 dark:text-white">Notes</h3>
               </div>
-
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {highlights.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-4">
-                    Select text in the PDF to highlight and add comments
-                  </p>
-                ) : (
-                  highlights.map((highlight) => {
-                    const colorClasses = HIGHLIGHT_COLORS[highlight.color] || HIGHLIGHT_COLORS.yellow;
-                    return (
-                      <div
-                        key={highlight.id}
-                        className={`p-3 rounded-lg border-l-4 ${colorClasses.background} ${colorClasses.border} relative group cursor-pointer hover:shadow-md transition-shadow`}
+                {/* Summary Section */}
+                {fullSummary && (
+                  <div className="border border-purple-200 dark:border-purple-800 rounded overflow-hidden">
+                    <button
+                      onClick={() => setShowSummaryContent(!showSummaryContent)}
+                      className="w-full flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                    >
+                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-400 flex items-center gap-2">
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Summary
+                      </h4>
+                      <svg
+                        className={`w-4 h-4 text-purple-600 transition-transform ${showSummaryContent ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm text-gray-700 dark:text-gray-800 italic">
-                            &ldquo;{highlight.content.text?.slice(0, 150)}{highlight.content.text && highlight.content.text.length > 150 ? '...' : ''}&rdquo;
-                          </p>
-                          <button
-                            onClick={() => deleteHighlight(highlight.id)}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {showSummaryContent && (
+                      <div className="p-3 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-800">
+                        <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          <LatexText text={fullSummary} />
                         </div>
-                        {highlight.comment?.text && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <p className="text-sm text-gray-600 dark:text-gray-700">
-                              {highlight.comment.text}
-                            </p>
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-400 mt-2">
-                          Page {highlight.position?.pageNumber || '?'}
-                        </p>
                       </div>
-                    );
-                  })
+                    )}
+                  </div>
                 )}
-              </div>
-            </div>
-          )}
 
-          {/* Results Panel - Summary only */}
-          {showResults && fullSummary && (
-            <div className="flex-1 min-w-[400px] bg-white dark:bg-gray-800 rounded-lg shadow-md flex flex-col overflow-hidden">
-              <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="font-bold text-gray-900 dark:text-white">Summary</h3>
-              </div>
-              <div className="flex-1 overflow-y-auto p-3">
-                <div className="border border-purple-200 dark:border-purple-800 rounded overflow-hidden">
+                {/* Highlights Section */}
+                <div className="border border-yellow-200 dark:border-yellow-800 rounded overflow-hidden">
                   <button
-                    onClick={() => setShowSummaryContent(!showSummaryContent)}
-                    className="w-full flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                    onClick={() => setShowHighlightsContent(!showHighlightsContent)}
+                    className="w-full flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors"
                   >
-                    <h4 className="text-sm font-medium text-purple-700 dark:text-purple-400">
-                      Full Summary
+                    <h4 className="text-sm font-medium text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Highlights & Comments {highlights.length > 0 && `(${highlights.length})`}
                     </h4>
                     <svg
-                      className={`w-4 h-4 text-purple-600 transition-transform ${showSummaryContent ? 'rotate-180' : ''}`}
+                      className={`w-4 h-4 text-yellow-600 transition-transform ${showHighlightsContent ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -440,11 +401,47 @@ function StudyPageContent() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  {showSummaryContent && (
-                    <div className="p-3 bg-white dark:bg-gray-800 border-t border-purple-200 dark:border-purple-800">
-                      <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                        <LatexText text={fullSummary} />
-                      </div>
+                  {showHighlightsContent && (
+                    <div className="p-3 bg-white dark:bg-gray-800 border-t border-yellow-200 dark:border-yellow-800 space-y-2">
+                      {highlights.length === 0 ? (
+                        <p className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
+                          Select text in PDF to highlight
+                        </p>
+                      ) : (
+                        highlights.map((highlight) => {
+                          const colorClasses = HIGHLIGHT_COLORS[highlight.color] || HIGHLIGHT_COLORS.yellow;
+                          return (
+                            <div
+                              key={highlight.id}
+                              className={`p-2 rounded border-l-4 ${colorClasses.background} ${colorClasses.border} relative group cursor-pointer hover:shadow-md transition-shadow`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs text-gray-700 dark:text-gray-800 italic">
+                                  &ldquo;{highlight.content.text?.slice(0, 100)}{highlight.content.text && highlight.content.text.length > 100 ? '...' : ''}&rdquo;
+                                </p>
+                                <button
+                                  onClick={() => deleteHighlight(highlight.id)}
+                                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
+                                >
+                                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              {highlight.comment?.text && (
+                                <div className="mt-1 pt-1 border-t border-gray-200">
+                                  <p className="text-xs text-gray-600 dark:text-gray-700">
+                                    {highlight.comment.text}
+                                  </p>
+                                </div>
+                              )}
+                              <p className="text-xs text-gray-400 mt-1">
+                                p.{highlight.position?.pageNumber || '?'}
+                              </p>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   )}
                 </div>

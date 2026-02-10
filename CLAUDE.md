@@ -1186,3 +1186,96 @@ POST /api/papers/translate-text
 3. 팝업에서 "번역하기" 버튼 클릭
 4. 녹색 박스에 한국어 번역 표시
 5. (선택) 하이라이트 색상 선택 후 "Highlight" 버튼으로 저장
+
+---
+
+## 2026-02-10 (Session 7): Study UI 개선 + 브라우저별 데이터 분리
+
+### 개요
+Study 페이지의 UI를 개선하고, Summary/Highlights/Session 데이터를 브라우저별로 분리 저장하도록 변경. 기존에 모든 사용자가 공유하던 Summary를 localStorage로 이동하여 각 PC/브라우저마다 독립적인 Study 환경 제공.
+
+### 주요 변경 사항
+
+#### 1. Study 페이지 UI 통합 (`frontend/src/app/study/page.tsx`)
+- **버튼 정리**: 3개 버튼 → 2개로 통합
+  - Before: `[Summary(보라)] [Highlights(노랑)] [Summary(파랑)] [Save]`
+  - After: `[Summary(보라)] [Notes(에메랄드)] [Save]`
+- **Notes 패널**: Summary와 Highlights를 하나의 패널로 통합
+  - Summary 섹션 (접기/펼치기 가능, 보라색 테마)
+  - Highlights & Comments 섹션 (접기/펼치기 가능, 노랑색 테마)
+- **패널 너비**: `w-96` (384px)
+
+#### 2. 브라우저별 데이터 분리 (localStorage 전환)
+- **변경 전**: Summary는 백엔드 `papers.json`에 저장 → 모든 사용자 공유
+- **변경 후**: Summary도 localStorage에 저장 → 브라우저별 분리
+
+```
+저장소 구조:
+┌─────────────────┐
+│  Backend Server │  ← Summary 생성만 담당 (저장 X)
+└────────┬────────┘
+         │
+   ┌─────┴─────┐
+   │           │
+Chrome      Safari
+localStorage localStorage
+- Summary    - Summary
+- Highlights - Highlights
+- Session    - Session
+```
+
+**localStorage 키**:
+| 데이터 | Key |
+|--------|-----|
+| Summary | `pdf-summary-{paperId}` |
+| Highlights | `pdf-highlights-{paperId}` |
+| Session | `study-session` |
+
+#### 3. 백엔드 변경 (`backend/app/routers/papers.py`)
+- `/api/papers/{id}/summarize-full` 엔드포인트
+- Summary 생성 후 `papers.json` 저장 로직 제거
+- Ollama로 생성만 하고 프론트엔드에 반환
+
+```python
+# 변경 전
+repo.update(paper_id, {"full_summary": summary})
+
+# 변경 후 (저장 로직 제거)
+# Note: Summary is NOT saved to backend anymore
+# Frontend saves it to localStorage for per-browser storage
+```
+
+### State 변수 변경
+
+```typescript
+// 제거된 state
+const [showHighlights, setShowHighlights] = useState(false);
+const [showResults, setShowResults] = useState(false);
+
+// 새로운 state
+const [showRightPanel, setShowRightPanel] = useState(false);
+const [showHighlightsContent, setShowHighlightsContent] = useState(true);
+```
+
+### 파일 변경 내역
+```
+frontend/src/app/study/page.tsx (MAJOR UPDATE)
+  - UI 버튼 통합 (3개 → 2개)
+  - Notes 패널에 Summary + Highlights 통합
+  - Summary localStorage 저장으로 전환
+  - Notes 버튼 색상: emerald
+
+backend/app/routers/papers.py (MODIFIED)
+  - summarize-full 엔드포인트에서 papers.json 저장 제거
+```
+
+### 사용자 경험 변화
+1. **UI 간소화**: 버튼이 줄어들어 더 직관적
+2. **통합 패널**: Summary와 Highlights를 한 곳에서 관리
+3. **프라이버시**: 다른 PC/브라우저에서 접속 시 독립적인 데이터
+4. **오프라인 저장**: 브라우저 데이터 삭제 전까지 유지
+
+### 알려진 제한사항
+1. **브라우저 데이터 삭제 시 손실**: localStorage 기반이므로 브라우저 캐시/데이터 삭제 시 Summary/Highlights 사라짐
+2. **기기 간 동기화 불가**: 다른 기기에서는 처음부터 다시 Summary 생성 필요
+3. **용량 제한**: localStorage는 보통 5-10MB 제한 (대부분 충분)
