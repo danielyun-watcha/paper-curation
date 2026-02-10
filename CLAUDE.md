@@ -8,7 +8,7 @@
 학술 논문 큐레이션 및 관리 시스템. 사용자가 관심있는 논문을 수집하고, 관련 논문을 찾고, 읽기 상태를 추적하는 웹 애플리케이션.
 
 ### 핵심 기능
-- 📚 **논문 관리**: JSON 파일 기반 로컬 컬렉션
+- 📚 **논문 관리**: SQLite 기반 로컬 데이터베이스
 - 🔍 **Google Scholar 검색**: scholarly 라이브러리를 통한 논문 검색
 - 🔗 **Connected Papers**: Semantic Scholar API로 관련 논문 찾기
 - 📊 **그래프 시각화**: 논문 간 연관성을 인터랙티브 그래프로 표시
@@ -18,7 +18,7 @@
 ### 기술 스택
 - **Backend**: FastAPI (Python 3.9+)
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **Database**: JSON 파일 (`backend/data/papers.json`)
+- **Database**: SQLite (`backend/data/papers.db`)
 - **External APIs**: Semantic Scholar, Google Scholar, arXiv, Crossref, DeepL (번역)
 
 ## 프로젝트 구조
@@ -29,10 +29,15 @@ paper-curation/
 │   ├── app/
 │   │   ├── main.py              # FastAPI 앱 진입점
 │   │   ├── config.py            # 설정 (환경변수)
+│   │   ├── db/                  # SQLite 데이터베이스
+│   │   │   ├── __init__.py
+│   │   │   ├── connection.py    # DB 연결 관리
+│   │   │   └── schema.py        # 테이블 스키마
+│   │   ├── repositories/
+│   │   │   └── paper_repository.py # 논문 CRUD (SQLite)
 │   │   ├── routers/
 │   │   │   └── papers.py        # 논문 API 엔드포인트
 │   │   ├── services/
-│   │   │   ├── paper_service.py           # 논문 CRUD
 │   │   │   ├── scholar_service.py         # Google Scholar 검색
 │   │   │   ├── semantic_scholar_service.py # Semantic Scholar API
 │   │   │   ├── arxiv_service.py           # arXiv API
@@ -44,8 +49,10 @@ paper-curation/
 │   │   └── utils/
 │   │       └── pdf_utils.py     # PDF 처리 유틸
 │   ├── data/
-│   │   ├── papers.json          # 논문 데이터 (JSON DB)
+│   │   ├── papers.db            # SQLite 데이터베이스
 │   │   └── uploads/             # 업로드된 PDF 파일
+│   ├── scripts/
+│   │   └── migrate_to_sqlite.py # JSON→SQLite 마이그레이션
 │   ├── venv/                    # Python 가상환경
 │   ├── requirements.txt         # Python 의존성
 │   └── .env                     # 환경변수 (API keys)
@@ -1276,6 +1283,125 @@ backend/app/routers/papers.py (MODIFIED)
 4. **오프라인 저장**: 브라우저 데이터 삭제 전까지 유지
 
 ### 알려진 제한사항
-1. **브라우저 데이터 삭제 시 손실**: localStorage 기반이므로 브라우저 캐시/데이터 삭제 시 Summary/Highlights 사라짐
-2. **기기 간 동기화 불가**: 다른 기기에서는 처음부터 다시 Summary 생성 필요
-3. **용량 제한**: localStorage는 보통 5-10MB 제한 (대부분 충분)
+1. **브라우저 데이터 삭제 시 손실**: localStorage 기반이므로 브라우저 캐시/데이터 삭제 시 Highlights 사라짐
+2. **용량 제한**: localStorage는 보통 5-10MB 제한 (대부분 충분)
+
+---
+
+## 2026-02-10 (Session 8): SQLite 마이그레이션
+
+### 개요
+JSON 파일 기반 저장소(`papers.json`)를 SQLite 데이터베이스로 마이그레이션. Summary를 서버 DB에 저장하여 모든 기기에서 공유 가능하도록 변경.
+
+### 주요 변경 사항
+
+#### 1. SQLite 데이터베이스 인프라
+- `backend/app/db/__init__.py` - 패키지 초기화
+- `backend/app/db/connection.py` - SQLite 연결 관리, `get_db()` context manager
+- `backend/app/db/schema.py` - 테이블 스키마 정의
+
+#### 2. 데이터베이스 스키마
+```sql
+-- Papers 테이블
+CREATE TABLE papers (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    authors TEXT NOT NULL,          -- JSON array
+    abstract TEXT,
+    year INTEGER,
+    arxiv_id TEXT UNIQUE,
+    arxiv_url TEXT,
+    doi TEXT UNIQUE,
+    paper_url TEXT,
+    conference TEXT,
+    category TEXT NOT NULL DEFAULT 'other',
+    published_at TEXT,
+    pdf_path TEXT,
+    summary_one_line TEXT,
+    summary_contribution TEXT,
+    summary_methodology TEXT,
+    summary_results TEXT,
+    full_summary TEXT,
+    translation TEXT,
+    full_translation TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+-- Tags 테이블
+CREATE TABLE tags (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+-- Paper-Tag 관계 (다대다)
+CREATE TABLE paper_tags (
+    paper_id TEXT REFERENCES papers(id) ON DELETE CASCADE,
+    tag_id TEXT REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (paper_id, tag_id)
+);
+```
+
+#### 3. Repository 재작성 (`backend/app/repositories/paper_repository.py`)
+- JSON 파일 대신 SQLite 쿼리 사용
+- 동일한 public interface 유지 (routers 변경 최소화)
+- JSON 필드 직렬화/역직렬화 처리 (authors, translation)
+- 태그 관계 처리 (paper_tags 테이블)
+
+#### 4. 마이그레이션 스크립트 (`backend/scripts/migrate_to_sqlite.py`)
+```bash
+cd backend
+python scripts/migrate_to_sqlite.py
+```
+- papers.json → papers.db 데이터 이전
+- 기존 JSON 파일 백업 (`papers.json.backup`)
+
+#### 5. Summary 저장 위치 변경
+- **변경 전**: localStorage (브라우저별 분리)
+- **변경 후**: 서버 DB (모든 기기에서 공유)
+- Highlights는 여전히 localStorage에 저장
+
+### 데이터 저장 구조
+
+| 데이터 | 저장 위치 | 공유 범위 |
+|--------|----------|----------|
+| Papers | SQLite DB | 서버 전체 |
+| Summary | SQLite DB | 서버 전체 |
+| Highlights | localStorage | 브라우저별 |
+| Session | localStorage | 브라우저별 |
+
+### 파일 변경 내역
+```
+backend/app/db/__init__.py (NEW)
+backend/app/db/connection.py (NEW)
+backend/app/db/schema.py (NEW)
+backend/app/database.py (SIMPLIFIED - 유틸만 유지)
+backend/app/main.py (ADD startup init_db)
+backend/app/repositories/paper_repository.py (REWRITE)
+backend/app/routers/papers.py (MODIFY - Summary 저장)
+backend/app/routers/tags.py (REWRITE - SQLite 사용)
+backend/scripts/migrate_to_sqlite.py (NEW)
+frontend/src/app/study/page.tsx (MODIFY - Summary 서버에서 로드)
+.gitignore (ADD *.db, *.backup, *_cache.json)
+```
+
+### Git Commit
+- **Commit**: a066ac2
+- **Branch**: main
+- **Date**: 2026-02-10
+- **Message**: "Migrate storage from JSON to SQLite"
+
+### SQLite 장점
+1. **계정 불필요**: 파일 기반 DB, 별도 설치/설정 없음
+2. **Python 내장**: sqlite3 모듈 기본 포함
+3. **ACID 보장**: 트랜잭션 지원
+4. **인덱스**: 빠른 검색 (arxiv_id, doi, year, category)
+5. **관계형**: 태그-논문 다대다 관계 정규화
+
+### 마이그레이션 방법
+기존 사용자가 업데이트 시:
+```bash
+cd backend
+source venv/bin/activate
+python scripts/migrate_to_sqlite.py
+```
