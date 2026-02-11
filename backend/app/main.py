@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ from app.routers import papers, tags
 from app.services.cache_service import start_cache_cleanup_scheduler
 from app.utils.http_client import HttpClientManager
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 app = FastAPI(title=settings.app_name)

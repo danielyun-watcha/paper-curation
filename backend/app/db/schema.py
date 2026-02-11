@@ -54,4 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_papers_category ON papers(category);
 CREATE INDEX IF NOT EXISTS idx_papers_updated_at ON papers(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_paper_tags_paper_id ON paper_tags(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_tags_tag_id ON paper_tags(tag_id);
+
+-- Metadata table for tracking updates
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
