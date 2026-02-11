@@ -65,12 +65,17 @@ for paper in papers:
         ))
 
         # Insert paper-tag relationships
-        for tag_name in paper.get('tags', []):
-            # Find tag id by name
-            cursor.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
-            row = cursor.fetchone()
-            if row:
-                tag_id = row[0]
+        for tag in paper.get('tags', []):
+            # Tags can be objects {'id': ..., 'name': ...} or just strings
+            if isinstance(tag, dict):
+                tag_id = tag.get('id')
+            else:
+                # It's a string (tag name), find the id
+                cursor.execute("SELECT id FROM tags WHERE name = ?", (tag,))
+                row = cursor.fetchone()
+                tag_id = row[0] if row else None
+
+            if tag_id:
                 cursor.execute(
                     "INSERT OR IGNORE INTO paper_tags (paper_id, tag_id) VALUES (?, ?)",
                     (paper['id'], tag_id)
@@ -86,5 +91,7 @@ cursor.execute("SELECT COUNT(*) FROM papers")
 print(f"Papers in SQLite: {cursor.fetchone()[0]}")
 cursor.execute("SELECT COUNT(*) FROM tags")
 print(f"Tags in SQLite: {cursor.fetchone()[0]}")
+cursor.execute("SELECT COUNT(*) FROM paper_tags")
+print(f"Paper-Tag relationships: {cursor.fetchone()[0]}")
 
 conn.close()
